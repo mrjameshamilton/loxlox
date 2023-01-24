@@ -1,0 +1,3 @@
+[submodule "jlox"]
+	path = jlox
+	url = git@github.com:mrjameshamilton/jlox.git

@@ -1,0 +1,2633 @@
+// A Lox interpreter written in Lox.
+//
+// The following native functions are required to run Lox.lox:
+//
+// * read(): number
+//     Returns 1 byte read from standard in.
+//     Returns `nil` if the end of the stream is reached.
+// * utf(number, number, number, number): string
+//     Takes 1, 2, 3, or 4 bytes and returns a corresponding UTF character.
+//     The Lox function `ascii` is a short-hand for utf(b1, nil, nil, nil).
+// * exit(number)
+//     Exits with the given exit code.
+// * printerr(string)
+//     Prints the string to standard error.
+
+// ASCII codes
+var ASCII_HT           = 9;
+var ASCII_LF           = 10;
+var ASCII_CR           = 13;
+var ASCII_SPACE        = 32;
+var ASCII_BANG         = 33;
+var ASCII_DOUBLE_QUOTE = 34;
+var ASCII_LEFT_PAREN   = 40;
+var ASCII_RIGHT_PAREN  = 41;
+var ASCII_STAR         = 42;
+var ASCII_PLUS         = 43;
+var ASCII_COMMA        = 44;
+var ASCII_MINUS        = 45;
+var ASCII_DOT          = 46;
+var ASCII_SLASH        = 47;
+var ASCII_0            = 48;
+var ASCII_9            = 57;
+var ASCII_SEMICOLON    = 59;
+var ASCII_LESS         = 60;
+var ASCII_EQUAL        = 61;
+var ASCII_GREATER      = 62;
+var ASCII_A            = 65;
+var ASCII_Z            = 90;
+var ASCII_UNDERSCORE   = 95;
+var ASCII_a            = 97;
+var ASCII_z            = 122;
+var ASCII_LEFT_BRACE   = 123;
+var ASCII_RIGHT_BRACE  = 125;
+
+// Convert a byte to an ASCII character string.
+fun ascii(b) {
+    return utf(b, nil, nil, nil);
+}
+
+// One or two character tokens.
+var TT_LEFT_PAREN    = 0;
+var TT_RIGHT_PAREN   = 1;
+var TT_LEFT_BRACE    = 2;
+var TT_RIGHT_BRACE   = 3;
+var TT_COMMA         = 4;
+var TT_DOT           = 5;
+var TT_MINUS         = 6;
+var TT_PLUS          = 7;
+var TT_SEMICOLON     = 8;
+var TT_SLASH         = 9;
+var TT_STAR          = 10;
+var TT_BANG          = 11;
+var TT_BANG_EQUAL    = 12;
+var TT_EQUAL         = 13;
+var TT_EQUAL_EQUAL   = 14;
+var TT_GREATER       = 15;
+var TT_GREATER_EQUAL = 16;
+var TT_LESS          = 17;
+var TT_LESS_EQUAL    = 18;
+
+// Literals.
+var TT_IDENTIFIER = 19;
+var TT_STRING     = 20;
+var TT_NUMBER     = 21;
+
+// Keywords.
+var TT_AND    = 22;
+var TT_CLASS  = 23;
+var TT_ELSE   = 24;
+var TT_FALSE  = 25;
+var TT_FUN    = 26;
+var TT_FOR    = 27;
+var TT_IF     = 28;
+var TT_NIL    = 29;
+var TT_OR     = 30;
+var TT_PRINT  = 31;
+var TT_RETURN = 32;
+var TT_SUPER  = 33;
+var TT_THIS   = 34;
+var TT_TRUE   = 35;
+var TT_VAR    = 36;
+var TT_WHILE  = 37;
+
+var TT_EOF = 38;
+
+class Token {
+    init(type, lexeme, literal, line) {
+        this.type    = type;
+        this.lexeme  = lexeme;
+        this.literal = literal;
+        this.line    = line;
+    }
+}
+
+// Converts positive integers to a string.
+// Used for line and function arity numbers in error messages.
+// TODO: Used in the AST printer, which can therefore not print decimals.
+fun number2string(num) {
+  var s = "";
+  var m = 1;
+  while (m * 10 <= num) m = m * 10;
+  while (m >= 1) {
+      var digit = 0;
+      while (m * (digit + 1) <= num) digit = digit + 1;
+      s   = s + ascii(digit + ASCII_0);
+      num = num - m * digit;
+      m   = m / 10;
+  }
+  return s;
+}
+
+class List {
+    init() {
+        this.head   = nil;
+        this.length = 0;
+    }
+
+    add(value) {
+        class Node { }
+        this.length = this.length + 1;
+        if (this.head == nil) {
+            this.head       = Node();
+            this.head.value = value;
+            this.head.next  = nil;
+            return;
+        }
+
+        var current = this.head;
+
+        while (current.next != nil) {
+            current = current.next;
+        }
+
+        current.next       = Node();
+        current.next.value = value;
+        current.next.next  = nil;
+    }
+
+
+    isEmpty() {
+        return this.length == 0;
+    }
+
+    get(i) {
+        if (i > this.length) return nil;
+
+        var x = 0;
+        var current = this.head;
+        while (x < i) {
+            current = current.next;
+            x = x + 1;
+        }
+
+        if (current == nil) return nil;
+
+        return current.value;
+    }
+
+    removeIf(function) {
+        var previous = nil;
+        var current  = this.head;
+        while (current != nil) {
+            if (function(current.value)) {
+                if (previous == nil) {
+                    this.head = nil;
+                } else {
+                    previous.next = current.next;
+                }
+                this.length = this.length - 1;
+                return;
+            }
+            previous = current;
+            current  = current.next;
+        }
+    }
+
+    sublist(start, end) {
+        if (start > this.length or end > this.length) return List();
+
+        var x = 0;
+        var current = this.head;
+        while (x < start) {
+            current = current.next;
+            x = x + 1;
+        }
+
+        var result = List();
+
+        while (x < end and current != nil) {
+            result.add(current.value);
+            current = current.next;
+            x = x + 1;
+        }
+
+        return result;
+    }
+
+    map(function) {
+        var result = List();
+        var current = this.head;
+        while (current != nil) {
+            result.add(function(current.value));
+            current = current.next;
+        }
+        return result;
+    }
+
+    filter(function) {
+        var result = List();
+        var current = this.head;
+        while (current != nil) {
+            if (function(current.value)) result.add(current.value);
+            current = current.next;
+        }
+        return result;
+    }
+
+    toString() {
+        var current = this.head;
+        var result  = "";
+        while (current != nil) {
+            if (current.value != nil) result = result + current.value;
+            current = current.next;
+        }
+        return result;
+    }
+}
+
+class Stack < List {
+    pop() {
+        if (this.length == 0) return nil;
+
+        var current = this.head;
+        this.head   = this.head.next;
+        this.length = this.length - 1;
+        return current.value;
+    }
+
+    push(value) {
+        class Node { }
+        var newNode   = Node();
+        newNode.value = value;
+        newNode.next  = this.head;
+        this.head     = newNode;
+        this.length   = this.length + 1;
+    }
+
+    peek() {
+        if (this.head == nil) return nil; else return this.head.value;
+    }
+}
+
+// An inefficient map implemented using the List linked-list.
+class Map {
+    init() {
+        this.entries = List();
+    }
+
+    put(key, value) {
+        class Entry {
+            init(key, value) {
+                this.key   = key;
+                this.value = value;
+            }
+        }
+        fun check(entry) {
+            return entry.key == key;
+        }
+        this.entries.removeIf(check);
+        this.entries.add(Entry(key, value));
+    }
+
+    get(key) {
+        var current = this.entries.head;
+        while (current != nil) {
+            if (current.value.key == key) {
+                return current.value.value;
+            }
+            current = current.next;
+        }
+        return nil;
+    }
+
+    containsKey(key) {
+        var current = this.entries.head;
+        while (current != nil) {
+            if (current.value.key == key) return true;
+            current = current.next;
+        }
+        return false;
+    }
+}
+
+// The root object in the Lox type hierarchy
+class LoxObject {
+    getClass() {
+        return LoxObject;
+    }
+
+    // `is` only works for the current class, it cannot
+    //  check if a class is a subclass of another.
+    is(type) {
+        return this.getClass() == type;
+    }
+
+    isCallable() {
+        return false;
+    }
+}
+
+class Literal < LoxObject {
+    init(value) {
+        this.value = value;
+    }
+
+    getClass() {
+        return Literal;
+    }
+}
+
+class String < Literal {
+    getClass() {
+        return String;
+    }
+}
+
+class Number < Literal {
+    getClass() {
+        return Number;
+    }
+}
+
+class Boolean < Literal {
+    getClass() {
+        return Boolean;
+    }
+}
+
+class Scanner {
+    init(source) {
+        this.start   = 0;
+        this.current = 0;
+        this.line    = 1;
+        this.source  = source;
+        this.tokens  = List();
+    }
+
+    scanTokens() {
+        while (!this.isAtEnd()) {
+            this.start = this.current;
+            this.scanToken();
+        }
+        this.addToken(TT_EOF, nil);
+        return this.tokens;
+    }
+
+    scanToken() {
+        var c = this.advance();
+
+        if      (c == ASCII_LEFT_PAREN)  this.addToken(TT_LEFT_PAREN, nil);
+        else if (c == ASCII_RIGHT_PAREN) this.addToken(TT_RIGHT_PAREN, nil);
+        else if (c == ASCII_LEFT_BRACE)  this.addToken(TT_LEFT_BRACE, nil);
+        else if (c == ASCII_RIGHT_BRACE) this.addToken(TT_RIGHT_BRACE, nil);
+        else if (c == ASCII_COMMA)       this.addToken(TT_COMMA, nil);
+        else if (c == ASCII_DOT)         this.addToken(TT_DOT, nil);
+        else if (c == ASCII_MINUS)       this.addToken(TT_MINUS, nil);
+        else if (c == ASCII_PLUS)        this.addToken(TT_PLUS, nil);
+        else if (c == ASCII_SEMICOLON)   this.addToken(TT_SEMICOLON, nil);
+        else if (c == ASCII_STAR)        this.addToken(TT_STAR, nil);
+        else if (c == ASCII_BANG) {
+            if (this.match(ASCII_EQUAL)) this.addToken(TT_BANG_EQUAL, nil);
+            else this.addToken(TT_BANG, nil);
+        } else if (c == ASCII_EQUAL) {
+            if (this.match(ASCII_EQUAL)) this.addToken(TT_EQUAL_EQUAL, nil);
+            else this.addToken(TT_EQUAL, nil);
+        } else if (c == ASCII_LESS) {
+            if (this.match(ASCII_EQUAL)) this.addToken(TT_LESS_EQUAL, nil);
+            else this.addToken(TT_LESS, nil);
+        } else if (c == ASCII_GREATER) {
+            if (this.match(ASCII_EQUAL)) this.addToken(TT_GREATER_EQUAL, nil);
+            else this.addToken(TT_GREATER, nil);
+        } else if (c == ASCII_SLASH) {
+            if (this.match(ASCII_SLASH)) {
+                while (!this.isNewLine(this.peek()) and !this.isAtEnd()) this.advance();
+            } else {
+                this.addToken(TT_SLASH, nil);
+            }
+        } else if (this.isWhitespace(c)) {
+            // ignore whitespace but increment line numbers
+            if (this.isNewLine(c)) this.line = this.line + 1;
+        } else if (this.isDoubleQuote(c)) {
+            this.string();
+        } else {
+            if (this.isDigit(c)) {
+                this.number();
+            } else if (this.isAlpha(c)) {
+                this.identifier();
+            } else {
+                loxError(this.line, "", "Unexpected character.");
+            }
+        }
+    }
+
+    identifier() {
+       fun type(string) {
+           if      (string == "and")    return TT_AND;
+           else if (string == "class")  return TT_CLASS;
+           else if (string == "else")   return TT_ELSE;
+           else if (string == "false")  return TT_FALSE;
+           else if (string == "for")    return TT_FOR;
+           else if (string == "fun")    return TT_FUN;
+           else if (string == "if")     return TT_IF;
+           else if (string == "nil")    return TT_NIL;
+           else if (string == "or")     return TT_OR;
+           else if (string == "print")  return TT_PRINT;
+           else if (string == "return") return TT_RETURN;
+           else if (string == "super")  return TT_SUPER;
+           else if (string == "this")   return TT_THIS;
+           else if (string == "true")   return TT_TRUE;
+           else if (string == "var")    return TT_VAR;
+           else if (string == "while")  return TT_WHILE;
+           else                         return TT_IDENTIFIER;
+       }
+
+        var text = ascii(this.source.get(this.start));
+        while (this.isAlphaNumeric(this.peek())) {
+            text = text + ascii(this.advance());
+        }
+
+        this.addToken(type(text), nil);
+    }
+
+    number() {
+        fun ascii2digit(c) {
+            return c - 48;
+        }
+
+        var num = ascii2digit(this.source.get(this.current - 1));
+        while (this.isDigit(this.peek())) {
+            var c = this.advance();
+            num = (num * 10) + ascii2digit(c);
+        }
+
+        if (this.peek() == ASCII_DOT and this.isDigit(this.peekNext())) {
+            this.advance(); // skip the "."
+
+            var numerator = 0;
+            var denominator = 1;
+
+            while (this.isDigit(this.peek())) {
+                var c = this.advance();
+                numerator = numerator * 10 + ascii2digit(c);
+                denominator = denominator * 10;
+            }
+
+            num = num + (numerator / denominator);
+        }
+
+        this.addToken(TT_NUMBER, num);
+    }
+
+    string() {
+        fun string(b) {
+            if (b < 128) return utf(b, nil, nil, nil);
+            if (b < 224) return utf(b, this.advance(), nil, nil);
+            if (b < 240) return utf(b, this.advance(), this.advance(), nil);
+            else         return utf(b, this.advance(), this.advance(), this.advance());
+        }
+
+        var str = "";
+
+        while (!this.isDoubleQuote(this.peek()) and !this.isAtEnd()) {
+            if (this.isNewLine(this.peek())) this.line = this.line + 1;
+            str = str + string(this.advance());
+        }
+
+        if (this.isAtEnd()) {
+            loxError(this.line, "", "Unterminated string.");
+            return;
+        }
+
+        // Skip the closing double-quote
+        this.advance();
+
+        this.addToken(TT_STRING, str);
+    }
+
+    advance() {
+        var c = this.source.get(this.current);
+        this.current = this.current + 1;
+        return c;
+    }
+
+    match(expected) {
+        if (this.isAtEnd()) return false;
+        if (this.source.get(this.current) != expected) return false;
+        this.current = this.current + 1;
+        return true;
+    }
+
+    addToken(type, literal) {
+        var text = this.source
+                       .sublist(this.start, this.current)
+                       .map(ascii)
+                       .toString();
+        this.tokens.add(Token(type, text, literal, this.line));
+    }
+
+    isDigit(x) {
+        if (x == nil) return false;
+
+        return x >= ASCII_0 and x <= ASCII_9;
+    }
+
+    isAlpha(x) {
+        if (x == nil) return false;
+
+        return (x >= ASCII_a and x <= ASCII_z) or
+               (x >= ASCII_A and x <= ASCII_Z) or
+               x == ASCII_UNDERSCORE;
+    }
+
+    isAlphaNumeric(c) {
+        return this.isDigit(c) or this.isAlpha(c);
+    }
+
+    isWhitespace(c) {
+        if (c == ASCII_SPACE or this.isNewLine(c)) return true;
+
+        return c == ASCII_HT or c == ASCII_LF or c == ASCII_CR;
+    }
+
+    isNewLine(c) {
+        return c == ASCII_LF;
+    }
+
+    isDoubleQuote(c) {
+        return c == ASCII_DOUBLE_QUOTE;
+    }
+
+    isAtEnd() {
+        return this.current >= this.source.length;
+    }
+
+    peek() {
+        if (this.isAtEnd()) return nil;
+        return this.source.get(this.current);
+    }
+
+    peekNext() {
+        if (this.current + 1 >= this.source.length) return nil;
+
+        return this.source.get(this.current + 1);
+    }
+}
+
+class Parser {
+    init(tokens) {
+        this.tokens   = tokens;
+        this.current  = 0;
+        this.hadError = false;
+    }
+
+    parse() {
+        var statements = List();
+        while (!this.isAtEnd()) {
+            statements.add(this.declaration());
+        }
+        return statements;
+    }
+
+    declaration() {
+        this.hadError = false;
+        var result = nil;
+        if      (this.match(TT_CLASS)) result = this.classDeclaration();
+        else if (this.match(TT_VAR))   result = this.varDeclaration();
+        else if (this.match(TT_FUN))   result = this.function("function");
+        else                           result = this.statement();
+
+        if (this.hadError) {
+            this.synchronize();
+            return;
+        }
+
+        return result;
+    }
+
+    classDeclaration() {
+        var name = this.consume(TT_IDENTIFIER, "Expect class name.");
+
+        var superclass = nil;
+        if (this.match(TT_LESS)) {
+            this.consume(TT_IDENTIFIER, "Expect superclass name.");
+            if (this.hadError) return;
+            superclass = VariableExpr(this.previous());
+        }
+
+        this.consume(TT_LEFT_BRACE, "Expect '{' before class body.");
+        if (this.hadError) return;
+
+        var methods = List();
+        while (!this.check(TT_RIGHT_BRACE) and !this.isAtEnd()) {
+            var method = this.function("method");
+            if (this.hadError) return;
+            methods.add(method);
+        }
+
+        this.consume(TT_RIGHT_BRACE, "Expect '}' after class body.");
+
+        return ClassStmt(name, superclass, methods);
+    }
+
+    statement() {
+        var result = nil;
+
+        if      (this.match(TT_FOR))        result = this.forStatement();
+        else if (this.match(TT_IF))         result = this.ifStatement();
+        else if (this.match(TT_PRINT))      result = this.printStatement();
+        else if (this.match(TT_RETURN))     result = this.returnStatement();
+        else if (this.match(TT_WHILE))      result = this.whileStatement();
+        else if (this.match(TT_LEFT_BRACE)) {
+            var body = this.block();
+            if (!this.hadError) result = BlockStmt(body);
+        } else result = this.expressionStatement();
+
+        if (this.hadError) return;
+
+        return result;
+    }
+
+    expression() {
+        var result = this.assignment();
+        if (this.hadError) return;
+        return result;
+    }
+
+    forStatement() {
+        this.consume(TT_LEFT_PAREN, "Expect '(' after 'for'.");
+        var initializer = nil;
+        if (this.match(TT_SEMICOLON)) {
+        } else if (this.match(TT_VAR)) {
+            initializer = this.varDeclaration();
+            if (this.hadError) return;
+        } else {
+            initializer = this.expressionStatement();
+            if (this.hadError) return;
+        }
+
+        var condition = nil;
+        if (!this.check(TT_SEMICOLON)) {
+            condition = this.expression();
+            if (this.hadError) return;
+        }
+        this.consume(TT_SEMICOLON, "Expect ';' after loop condition.");
+
+        var increment = nil;
+        if (!this.check(TT_RIGHT_PAREN)) {
+            increment = this.expression();
+            if (this.hadError) return;
+        }
+        this.consume(TT_RIGHT_PAREN, "Expect ')' after for clauses.");
+
+        var body = this.statement();
+        if (this.hadError) return;
+
+        if (increment != nil) {
+            var list = List();
+            list.add(body);
+            list.add(ExpressionStmt(increment));
+            body = BlockStmt(list);
+        }
+
+        if (condition == nil) condition = LiteralExpr(Boolean(true));
+
+        body = WhileStmt(condition, body);
+
+        if (initializer != nil) {
+            var list = List();
+            list.add(initializer);
+            list.add(body);
+            body = BlockStmt(list);
+        }
+
+        return body;
+    }
+
+    ifStatement() {
+        this.consume(TT_LEFT_PAREN, "Expect '(' after 'if'.");
+        var condition = this.expression();
+        if (this.hadError) return;
+        this.consume(TT_RIGHT_PAREN, "Expect ')' after 'if' condition.");
+
+        var thenBranch = this.statement();
+        if (this.hadError) return;
+        var elseBranch = nil;
+        if (this.match(TT_ELSE)) elseBranch = this.statement();
+
+        if (this.hadError) return;
+        return IfStmt(condition, thenBranch, elseBranch);
+    }
+
+    printStatement() {
+        var value = this.expression();
+        if (this.hadError) return;
+        this.consume(TT_SEMICOLON, "Expect ';' after value.");
+        return PrintStmt(value);
+    }
+
+    returnStatement() {
+        var keyword = this.previous();
+        var value = nil;
+        if (!this.check(TT_SEMICOLON)) {
+            value = this.expression();
+            if (this.hadError) return;
+        }
+        this.consume(TT_SEMICOLON, "Expect ';' after return value.");
+        return ReturnStmt(keyword, value);
+    }
+
+    varDeclaration() {
+        var name = this.consume(TT_IDENTIFIER, "Expect variable name.");
+        if (this.hadError) return;
+
+        var initializer = nil;
+        if (this.match(TT_EQUAL)) {
+            initializer = this.expression();
+            if (this.hadError) return;
+        }
+
+        this.consume(TT_SEMICOLON, "Expect ';' after variable declaration.");
+        if (this.hadError) return;
+        return VarStmt(name, initializer);
+    }
+
+    whileStatement() {
+        this.consume(TT_LEFT_PAREN, "Expect '(' after 'while'.");
+        var condition = this.expression();
+        if (this.hadError) return;
+        this.consume(TT_RIGHT_PAREN, "Expect ')' after condition.");
+        var body = this.statement();
+
+        if (this.hadError) return;
+        return WhileStmt(condition, body);
+    }
+
+    expressionStatement() {
+        var expr = this.expression();
+        if (this.hadError) return;
+        this.consume(TT_SEMICOLON, "Expect ';' after expression.");
+        return ExpressionStmt(expr);
+    }
+
+    function(kind) {
+        var name = this.consume(TT_IDENTIFIER, "Expect " + kind + " name.");
+        this.consume(TT_LEFT_PAREN, "Expect '(' after " + kind + " name.");
+        var parameters = List();
+
+        if (!this.check(TT_RIGHT_PAREN)) {
+            var continue = true;
+            while (continue) {
+                if (parameters.length >= 255) {
+                    this.error(this.peek(), "Can't have more than 255 parameters.");
+                    continue = false;
+                }
+
+                parameters.add(this.consume(TT_IDENTIFIER, "Expect parameter name."));
+
+                continue = this.match(TT_COMMA);
+            }
+        }
+
+        this.consume(TT_RIGHT_PAREN, "Expect ')' after parameters.");
+        if (this.hadError) return;
+        this.consume(TT_LEFT_BRACE,  "Expect '{' before " + kind + " body.");
+        if (this.hadError) return;
+
+        var body = this.block();
+        if (this.hadError) return;
+        return FunctionStmt(name, parameters, body);
+    }
+
+    block() {
+        var statements = List();
+
+        while (!this.check(TT_RIGHT_BRACE) and !this.isAtEnd()) {
+            statements.add(this.declaration());
+            if (this.hadError) return;
+        }
+
+        this.consume(TT_RIGHT_BRACE, "Expect '}' after block.");
+        if (this.hadError) return;
+
+        return statements;
+    }
+
+    assignment() {
+        var expr = this.or_();
+        if (this.hadError) return;
+
+        if (this.match(TT_EQUAL)) {
+            var equals   = this.previous();
+            var value    = this.assignment();
+            var exprType = expr.getClass();
+
+            if (exprType == VariableExpr) {
+                return AssignExpr(expr.name, value);
+            } else if (exprType == GetExpr) {
+                return SetExpr(expr.object, expr.name, value);
+            }
+
+            this.error(equals, "Invalid assignment target.");
+            return;
+        }
+
+        return expr;
+    }
+
+    or_() {
+        var expr = this.and_();
+        if (this.hadError) return;
+
+        while (this.match(TT_OR)) {
+            var operator = this.previous();
+            var right    = this.and_();
+            if (this.hadError) return;
+            expr = LogicalExpr(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    and_() {
+        var expr = this.equality();
+        if (this.hadError) return;
+
+        while (this.match(TT_AND)) {
+            var operator = this.previous();
+            var right    = this.equality();
+            if (this.hadError) return;
+            expr = LogicalExpr(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    equality() {
+        var expr = this.comparison();
+        if (this.hadError) return;
+
+        while (this.match2(TT_BANG_EQUAL, TT_EQUAL_EQUAL)) {
+            var operator = this.previous();
+            var right    = this.comparison();
+            expr = BinaryExpr(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    comparison() {
+        var expr = this.term();
+        if (this.hadError) return;
+
+        while (this.match4(TT_GREATER, TT_GREATER_EQUAL, TT_LESS, TT_LESS_EQUAL)) {
+            var operator = this.previous();
+            var right    = this.term();
+            expr = BinaryExpr(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    term() {
+        var expr = this.factor();
+        if (this.hadError) return;
+
+        while (this.match2(TT_MINUS, TT_PLUS)) {
+            var operator = this.previous();
+            var right    = this.factor();
+            expr = BinaryExpr(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    factor() {
+        var expr = this.unary();
+        if (this.hadError) return;
+
+        while (this.match2(TT_SLASH, TT_STAR)) {
+            var operator = this.previous();
+            var right    = this.unary();
+            expr = BinaryExpr(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    unary() {
+        if (this.match2(TT_BANG, TT_MINUS)) {
+            var operator = this.previous();
+            var right    = this.unary();
+            return UnaryExpr(operator, right);
+        }
+
+        var result = this.call();
+        if (this.hadError) return;
+        return result;
+    }
+
+    call() {
+        var expr = this.primary();
+        if (this.hadError) return;
+
+        var continue = true;
+        while (continue) {
+            if (this.match(TT_LEFT_PAREN)) {
+                expr = this.finishCall(expr);
+                if (this.hadError) return;
+            } else if (this.match(TT_DOT)) {
+                var name = this.consume(TT_IDENTIFIER, "Expect property name after '.'.");
+                expr = GetExpr(expr, name);
+            } else {
+                continue = false;
+            }
+        }
+
+        return expr;
+    }
+
+    finishCall(callee) {
+        var arguments = List();
+        if (!this.check(TT_RIGHT_PAREN)) {
+            var continue = true;
+            while (continue) {
+                if (arguments.length >= 255) {
+                    this.error(this.peek(), "Can't have more than 255 arguments.");
+                    return;
+                }
+                arguments.add(this.expression());
+                continue = this.match(TT_COMMA);
+            }
+        }
+
+        var paren = this.consume(TT_RIGHT_PAREN, "Expect ')' after arguments.");
+
+        return CallExpr(callee, paren, arguments);
+    }
+
+    primary() {
+        if (this.match(TT_FALSE))  return LiteralExpr(Boolean(false));
+        if (this.match(TT_TRUE))   return LiteralExpr(Boolean(true));
+        if (this.match(TT_NIL))    return LiteralExpr(nil);
+        if (this.match(TT_NUMBER)) return LiteralExpr(Number(this.previous().literal));
+        if (this.match(TT_STRING)) return LiteralExpr(String(this.previous().literal));
+
+        if (this.match(TT_SUPER)) {
+            var keyword = this.previous();
+            this.consume(TT_DOT, "Expect '.' after 'super'.");
+            if (this.hadError) return;
+            var method = this.consume(TT_IDENTIFIER, "Expect superclass method name.");
+            return SuperExpr(keyword, method);
+        }
+
+        if (this.match(TT_THIS))       return ThisExpr(this.previous());
+        if (this.match(TT_IDENTIFIER)) return VariableExpr(this.previous());
+
+        if (this.match(TT_LEFT_PAREN)) {
+            var expr = this.expression();
+            this.consume(TT_RIGHT_PAREN, "Expect ')' after expression.");
+            return GroupingExpr(expr);
+        }
+
+        this.error(this.peek(), "Expect expression.");
+    }
+
+    match(type) {
+        if (this.check(type)) {
+            this.advance();
+            return true;
+        }
+
+        return false;
+    }
+
+    match2(type1, type2) {
+        return this.match(type1) or this.match(type2);
+    }
+
+    match3(type1, type2, type3) {
+        return this.match2(type1, type2) or this.match(type3);
+    }
+
+    match4(type1, type2, type3, type4) {
+        return this.match3(type1, type2, type3) or
+               this.match(type4);
+    }
+
+    consume(type, message) {
+        if (this.check(type)) return this.advance();
+
+        this.error(this.peek(), message);
+    }
+
+    check(type) {
+        if (this.isAtEnd()) return false;
+        return this.peek().type == type;
+    }
+
+    advance() {
+        if (!this.isAtEnd()) this.current = this.current + 1;
+        return this.previous();
+    }
+
+    isAtEnd() {
+        return this.peek().type == TT_EOF;
+    }
+
+    peek() {
+        return this.tokens.get(this.current);
+    }
+
+    previous() {
+        return this.tokens.get(this.current - 1);
+    }
+
+    error(token, message) {
+        this.hadError = true;
+        loxErrorToken(token, message);
+    }
+
+    synchronize() {
+        this.advance();
+        while (!this.isAtEnd()) {
+            if (this.previous().type == TT_SEMICOLON) return;
+            var next = this.peek().type;
+            if (next == TT_CLASS or
+                next == TT_FUN   or
+                next == TT_VAR   or
+                next == TT_FOR   or
+                next == TT_IF    or
+                next == TT_WHILE or
+                next == TT_PRINT or
+                next == TT_RETURN) return;
+
+            this.advance();
+        }
+        this.hadError = false;
+    }
+}
+
+var CLASS_TYPE_NONE     = 0;
+var CLASS_TYPE_CLASS    = 1;
+var CLASS_TYPE_SUBCLASS = 2;
+
+var FUNCTION_TYPE_NONE        = 0;
+var FUNCTION_TYPE_METHOD      = 1;
+var FUNCTION_TYPE_INITIALIZER = 2;
+var FUNCTION_TYPE_FUNCTION    = 3;
+
+class Resolver {
+    init(interpreter) {
+        this.interpreter         = interpreter;
+        this.currentClassType    = CLASS_TYPE_NONE;
+        this.currentFunctionType = FUNCTION_TYPE_NONE;
+        this.scopes              = Stack();
+    }
+
+    resolve(statements) {
+        for (var i = 0; i < statements.length; i = i + 1) {
+            statements.get(i).accept(this);
+        }
+    }
+
+    visitBlockStmt(blockStmt) {
+        this.beginScope();
+        this.resolve(blockStmt.statements);
+        this.endScope();
+    }
+
+    visitClassStmt(classStmt) {
+        var enclosingClass = this.currentClassType;
+        this.currentClassType = CLASS_TYPE_CLASS;
+
+        this.declare(classStmt.name);
+        this.define(classStmt.name);
+
+        if (classStmt.superclass != nil and
+            classStmt.name.lexeme == classStmt.superclass.name.lexeme) {
+            loxErrorToken(classStmt.superclass.name, "A class can't inherit from itself.");
+        }
+
+        if (classStmt.superclass != nil) {
+            this.currentClassType = CLASS_TYPE_SUBCLASS;
+            classStmt.superclass.accept(this);
+        }
+
+        if (classStmt.superclass != nil) {
+            this.beginScope();
+            this.scopes.peek().put("super", true);
+        }
+
+        this.beginScope();
+        this.scopes.peek().put("this", true);
+
+        for (var i = 0; i < classStmt.methods.length; i = i + 1) {
+            var method = classStmt.methods.get(i);
+            var declaration = FUNCTION_TYPE_METHOD;
+            if (method.name.lexeme == "init") {
+                declaration = FUNCTION_TYPE_INITIALIZER;
+            }
+            this.resolveFunction(method, declaration);
+        }
+
+        this.endScope();
+
+        if (classStmt.superclass != nil) this.endScope();
+
+        this.currentClassType = enclosingClass;
+    }
+
+    visitExpressionStmt(expressionStmt) {
+        expressionStmt.expression.accept(this);
+    }
+
+    visitFunctionStmt(functionStmt) {
+        this.declare(functionStmt.name);
+        this.define(functionStmt.name);
+        this.resolveFunction(functionStmt, FUNCTION_TYPE_FUNCTION);
+    }
+
+    visitIfStmt(ifStmt) {
+        ifStmt.condition.accept(this);
+        ifStmt.thenBranch.accept(this);
+        if (ifStmt.elseBranch != nil) ifStmt.elseBranch.accept(this);
+    }
+
+    visitPrintStmt(printStmt) {
+        printStmt.expression.accept(this);
+    }
+
+    visitReturnStmt(returnStmt) {
+        if (this.currentFunctionType == FUNCTION_TYPE_NONE) {
+            loxErrorToken(returnStmt.keyword, "Can't return from top-level code.");
+            return;
+        }
+
+        if (returnStmt.value != nil) {
+            if (this.currentFunctionType == FUNCTION_TYPE_INITIALIZER) {
+                loxErrorToken(returnStmt.keyword, "Can't return a value from an initializer.");
+            }
+
+            returnStmt.value.accept(this);
+        }
+    }
+
+    visitVarStmt(varStmt) {
+        this.declare(varStmt.name);
+        if (varStmt.initializer != nil) varStmt.initializer.accept(this);
+        this.define(varStmt.name);
+    }
+
+    visitWhileStmt(whileStmt) {
+        whileStmt.condition.accept(this);
+        whileStmt.body.accept(this);
+    }
+
+    visitAssignExpr(assignExpr) {
+        assignExpr.value.accept(this);
+        this.resolveLocal(assignExpr, assignExpr.name);
+    }
+
+    visitBinaryExpr(binaryExpr) {
+        binaryExpr.left.accept(this);
+        binaryExpr.right.accept(this);
+    }
+
+    visitCallExpr(callExpr) {
+        callExpr.callee.accept(this);
+        var arguments = callExpr.arguments;
+        for (var i = 0; i < arguments.length; i = i + 1) {
+            arguments.get(i).accept(this);
+        }
+    }
+
+    visitGetExpr(getExpr) {
+        getExpr.object.accept(this);
+    }
+
+    visitGroupingExpr(groupingExpr) {
+        groupingExpr.expression.accept(this);
+    }
+
+    visitLiteralExpr(literalExpr) {
+        return literalExpr.value;
+    }
+
+    visitLogicalExpr(logicalExpr) {
+        logicalExpr.left.accept(this);
+        logicalExpr.right.accept(this);
+    }
+
+    visitSetExpr(setExpr) {
+        setExpr.value.accept(this);
+        setExpr.object.accept(this);
+    }
+
+    visitSuperExpr(superExpr) {
+        if (this.currentClassType == CLASS_TYPE_NONE) {
+            loxErrorToken(superExpr.keyword, "Can't use 'super' outside of a class.");
+        } else if (this.currentClassType != CLASS_TYPE_SUBCLASS) {
+            loxErrorToken(superExpr.keyword, "Can't use 'super' in a class with no superclass.");
+        }
+
+        this.resolveLocal(superExpr, superExpr.keyword);
+    }
+
+    visitThisExpr(thisExpr) {
+        if (this.currentClassType == CLASS_TYPE_NONE) {
+            loxErrorToken(thisExpr.keyword, "Can't use 'this' outside of a class.");
+            return;
+        }
+
+        this.resolveLocal(thisExpr, thisExpr.keyword);
+    }
+
+    visitUnaryExpr(unaryExpr) {
+        unaryExpr.right.accept(this);
+    }
+
+    visitVariableExpr(variableExpr) {
+        if (!this.scopes.isEmpty() and
+            this.scopes.peek().get(variableExpr.name.lexeme) == false) {
+            loxErrorToken(variableExpr.name, "Can't read local variable in its own initializer.");
+        }
+
+        this.resolveLocal(variableExpr, variableExpr.name);
+    }
+
+    beginScope() {
+        this.scopes.push(Map());
+    }
+
+    endScope() {
+        this.scopes.pop();
+    }
+
+    declare(name) {
+        if (this.scopes.length == 0) return;
+
+        var scope = this.scopes.peek();
+
+        if (scope.containsKey(name.lexeme)) {
+            loxErrorToken(name, "Already a variable with this name in this scope.");
+            return;
+        }
+
+        scope.put(name.lexeme, false);
+    }
+
+    define(name) {
+        if (this.scopes.isEmpty()) return;
+        this.scopes.peek().put(name.lexeme, true);
+    }
+
+    resolveLocal(expr, name) {
+        var top = this.scopes.head;
+        var i   = this.scopes.length - 1;
+        while (top) {
+            var map = top.value;
+            if (map.containsKey(name.lexeme)) {
+                var distance = this.scopes.length - 1 - i;
+                this.interpreter.resolve(expr, distance);
+                return;
+            }
+            top = top.next;
+            i   = i - 1;
+        }
+    }
+
+    resolveFunction(function, type) {
+        var enclosingFunction = this.currentFunctionType;
+        this.currentFunctionType = type;
+
+        this.beginScope();
+        for (var i = 0; i < function.params.length; i = i + 1) {
+            var param = function.params.get(i);
+            this.declare(param);
+            this.define(param);
+        }
+        this.resolve(function.body);
+        this.endScope();
+
+        this.currentFunctionScope = enclosingFunction;
+    }
+}
+
+class Environment {
+    init(enclosing) {
+        this.enclosing = enclosing;
+        this.values    = Map();
+    }
+
+    get(name) {
+        if (this.values.containsKey(name.lexeme)) {
+            return this.values.get(name.lexeme);
+        }
+
+        if (this.enclosing != nil) return this.enclosing.get(name);
+
+        runtimeError(name, "Undefined variable '" + name.lexeme + "'.");
+    }
+
+    assign(name, value) {
+        if (this.values.containsKey(name.lexeme)) {
+            this.values.put(name.lexeme, value);
+            return;
+        }
+
+        if (this.enclosing != nil) {
+            this.enclosing.assign(name, value);
+            return;
+        }
+
+        runtimeError(name, "Undefined variable '" + name.lexeme + "'.");
+    }
+
+    define(name, value) {
+        this.values.put(name, value);
+    }
+
+    ancestor(distance) {
+        var environment = this;
+        for (var i = 0; i < distance; i = i + 1) {
+            environment = environment.enclosing;
+        }
+        return environment;
+    }
+
+    getAt(distance, name) {
+        return this.ancestor(distance).values.get(name);
+    }
+
+    assignAt(distance, name, value) {
+        this.ancestor(distance).values.put(name.lexeme, value);
+    }
+}
+
+class LoxCallable < LoxObject {
+    getClass() {
+        return LoxCallable;
+    }
+
+    isCallable() {
+        return true;
+    }
+}
+
+class LoxFunction < LoxCallable {
+    init(declaration, closure, isInitializer) {
+        this.declaration   = declaration;
+        this.closure       = closure;
+        this.isInitializer = isInitializer;
+    }
+
+    bind(instance) {
+        var environment = Environment(this.closure);
+        environment.define("this", instance);
+        return LoxFunction(this.declaration, environment, this.isInitializer);
+    }
+
+    toString() {
+        return "<fn " + this.declaration.name.lexeme + ">";
+    }
+
+    arity() {
+        return this.declaration.params.length;
+    }
+
+    call(interpreter, arguments) {
+        var environment = Environment(this.closure);
+        for (var i = 0; i < this.arity(); i = i + 1) {
+            environment.define(this.declaration.params.get(i).lexeme, arguments.get(i));
+        }
+
+        var result = interpreter.executeBlock(this.declaration.body, environment);
+
+        if (this.isInitializer) return this.closure.getAt(0, "this");
+
+        if (result != nil) {
+            if (result.is(Return)) {
+                return result.value;
+            } else {
+                return result;
+            }
+        } else return nil;
+    }
+
+    getClass() {
+        return LoxFunction;
+    }
+}
+
+class LoxClass < LoxCallable {
+    init(name, superclass, methods) {
+        this.name       = name;
+        this.superclass = superclass;
+        this.methods    = methods;
+    }
+
+    findMethod(name) {
+        if (this.methods.containsKey(name)) {
+            return this.methods.get(name);
+        }
+
+        if (this.superclass != nil) {
+            return this.superclass.findMethod(name);
+        }
+
+        return nil;
+    }
+
+    toString() {
+        return this.name;
+    }
+
+    call(interpreter, arguments) {
+        var instance = LoxInstance(this);
+        var initializer = this.findMethod("init");
+        if (initializer != nil) {
+            initializer.bind(instance).call(interpreter, arguments);
+        }
+        return instance;
+    }
+
+    arity() {
+        var initializer = this.findMethod("init");
+        if (initializer == nil) return 0;
+        return initializer.arity();
+    }
+
+    getClass() {
+        return LoxClass;
+    }
+}
+
+class LoxInstance < LoxObject {
+    init(klass) {
+        this.klass  = klass;
+        this.fields = Map();
+    }
+
+    get(name) {
+        if (this.fields.containsKey(name.lexeme)) {
+            return this.fields.get(name.lexeme);
+        }
+
+        var method = this.klass.findMethod(name.lexeme);
+
+        if (method != nil) return method.bind(this);
+
+        runtimeError(name, "Undefined property '" + name.lexeme + "'.");
+    }
+
+    set(name, value) {
+        this.fields.put(name.lexeme, value);
+    }
+
+    getClass() {
+        return LoxInstance;
+    }
+
+    toString() {
+        return this.klass.name + " instance";
+    }
+}
+
+class Return < LoxObject {
+    init(value) {
+        this.value = value;
+    }
+
+    getClass() {
+        return Return;
+    }
+}
+
+class Interpreter {
+    init() {
+        this.globals     = Environment(nil);
+        this.environment = this.globals;
+        this.locals      = Map();
+        class ClockFunction < LoxCallable {
+            arity() { return 0; }
+            call(interpreter, arguments) {
+                return Number(clock());
+            }
+            toString() { return "<native fn>"; }
+        }
+        this.globals.define("clock", ClockFunction());
+    }
+
+    interpret(statements) {
+        for (var i = 0; i < statements.length; i = i + 1) {
+            this.execute(statements.get(i));
+            if (hadRuntimeError) return;
+        }
+    }
+
+    evaluate(expr) {
+        return expr.accept(this);
+    }
+
+    execute(statement) {
+        return statement.accept(this);
+    }
+
+    resolve(expr, depth) {
+        this.locals.put(expr, depth);
+    }
+
+    executeBlock(statements, environment) {
+        var previous     = this.environment;
+        this.environment = environment;
+        var returnValue  = nil;
+        for (var i = 0; i < statements.length; i = i + 1) {
+            var result = this.execute(statements.get(i));
+            if (result != nil and result.is(Return)) {
+                i           = statements.length;
+                returnValue = result;
+            }
+        }
+        this.environment = previous;
+        return returnValue;
+    }
+
+    visitBlockStmt(stmt) {
+        return this.executeBlock(stmt.statements, Environment(this.environment));
+    }
+
+    visitClassStmt(stmt) {
+        var superclass = nil;
+        if (stmt.superclass != nil) {
+            superclass = this.evaluate(stmt.superclass);
+            if (superclass == nil or !superclass.is(LoxClass)) {
+                runtimeError(stmt.superclass.name, "Superclass must be a class.");
+                return;
+            }
+        }
+
+        this.environment.define(stmt.name.lexeme, nil);
+        if (stmt.superclass != nil) {
+            this.environment = Environment(this.environment);
+            this.environment.define("super", superclass);
+        }
+
+        var methods = Map();
+        for (var i = 0; i < stmt.methods.length; i = i + 1) {
+            var method   = stmt.methods.get(i);
+            var function = LoxFunction(method, this.environment, method.name.lexeme == "init");
+            methods.put(method.name.lexeme, function);
+        }
+
+        var klass = LoxClass(stmt.name.lexeme, superclass, methods);
+
+        if (superclass != nil) this.environment = this.environment.enclosing;
+
+        this.environment.assign(stmt.name, klass);
+    }
+
+    visitExpressionStmt(stmt) {
+        return this.evaluate(stmt.expression);
+    }
+
+    visitFunctionStmt(stmt) {
+        var function = LoxFunction(stmt, this.environment, false);
+        this.environment.define(stmt.name.lexeme, function);
+    }
+
+    visitIfStmt(stmt) {
+        var result = this.evaluate(stmt.condition);
+        if (hadRuntimeError) return;
+
+        if (this.isTruthy(result)) {
+            return this.execute(stmt.thenBranch);
+        } else if (stmt.elseBranch != nil) {
+            return this.execute(stmt.elseBranch);
+        }
+    }
+
+    visitPrintStmt(stmt) {
+        var value = this.evaluate(stmt.expression);
+        if (hadRuntimeError) return;
+        if (value == nil)
+            print nil;
+        else if (value.is(String) or value.is(Number) or value.is(Boolean))
+            print value.value;
+        else
+            print value.toString();
+    }
+
+    visitReturnStmt(stmt) {
+        var value = nil;
+        if (stmt.value != nil) value = this.evaluate(stmt.value);
+        if (hadRuntimeError) return;
+        return Return(value);
+    }
+
+    visitVarStmt(stmt) {
+        var value = nil;
+        if (stmt.initializer != nil) {
+            value = this.evaluate(stmt.initializer);
+        }
+        if (hadRuntimeError) return;
+        this.environment.define(stmt.name.lexeme, value);
+    }
+
+    visitWhileStmt(stmt) {
+        while (this.isTruthy(this.evaluate(stmt.condition))) {
+            if (hadRuntimeError) return;
+            var result = this.execute(stmt.body);
+            if (result != nil) return result;
+        }
+    }
+
+    visitAssignExpr(expr) {
+        var value = this.evaluate(expr.value);
+        if (hadRuntimeError) return;
+
+        var distance = this.locals.get(expr);
+        if (distance != nil) {
+            this.environment.assignAt(distance, expr.name, value);
+        } else {
+            this.globals.assign(expr.name, value);
+        }
+
+        return value;
+    }
+
+    visitBinaryExpr(expr) {
+        var left  = this.evaluate(expr.left);
+        if (hadRuntimeError) return;
+        var right = this.evaluate(expr.right);
+        if (hadRuntimeError) return;
+        var type  = expr.operator.type;
+
+        if (type == TT_GREATER or type == TT_GREATER_EQUAL or
+            type == TT_LESS    or type == TT_LESS_EQUAL    or
+            type == TT_MINUS   or type == TT_SLASH         or
+            type == TT_STAR) {
+            if (!this.checkNumberOperands(expr.operator, left, right)) {
+                runtimeError(expr.operator, "Operands must be numbers.");
+                return;
+            }
+        }
+
+        if (type == TT_BANG_EQUAL)    return Boolean(!this.isEqual(left, right));
+        if (type == TT_EQUAL_EQUAL)   return Boolean(this.isEqual(left, right));
+        if (type == TT_GREATER)       return Boolean(left.value > right.value);
+        if (type == TT_GREATER_EQUAL) return Boolean(left.value >= right.value);
+        if (type == TT_LESS)          return Boolean(left.value < right.value);
+        if (type == TT_LESS_EQUAL)    return Boolean(left.value <= right.value);
+        if (type == TT_MINUS)         return Number(left.value - right.value);
+        if (type == TT_PLUS)
+        {
+            if (left == nil or right == nil) {
+                // Not allowed to add nil
+            } else if (left.is(Number) and right.is(Number)) {
+                return Number(left.value + right.value);
+            } else if (left.is(String) and right.is(String)) {
+                return String(left.value + right.value);
+            }
+
+            runtimeError(expr.operator, "Operands must be two numbers or two strings.");
+            return;
+        }
+        if (type == TT_SLASH) return Number(left.value / right.value);
+        if (type == TT_STAR)  return Number(left.value * right.value);
+    }
+
+    checkNumberOperands(operator, left, right) {
+        if (left == nil or right == nil) return false;
+        return left.is(Number) and right.is(Number);
+    }
+
+    visitCallExpr(expr) {
+        var callee = this.evaluate(expr.callee);
+        if (hadRuntimeError) return;
+
+        var arguments = List();
+        for (var i = 0; i < expr.arguments.length; i = i + 1) {
+            arguments.add(this.evaluate(expr.arguments.get(i)));
+            if (hadRuntimeError) return;
+        }
+
+        if (callee == nil or !callee.isCallable()) {
+            runtimeError(expr.paren, "Can only call functions and classes.");
+            return;
+        }
+
+        if (arguments.length != callee.arity()) {
+            runtimeError(expr.paren, "Expected " + number2string(callee.arity()) +
+                                     " arguments but got " + number2string(arguments.length) + ".");
+            return;
+        }
+
+        return callee.call(this, arguments);
+    }
+
+    visitGetExpr(expr) {
+        var object = this.evaluate(expr.object);
+        if (hadRuntimeError) return;
+        if (object == nil or !object.is(LoxInstance)) {
+            runtimeError(expr.name, "Only instances have properties.");
+            return;
+        }
+        return object.get(expr.name);
+    }
+
+    visitGroupingExpr(expr) {
+        return this.evaluate(expr.expression);
+    }
+
+    visitLiteralExpr(expr) {
+        return expr.value;
+    }
+
+    visitLogicalExpr(expr) {
+        var left = this.evaluate(expr.left);
+
+        if (expr.operator.type == TT_OR) {
+            if (this.isTruthy(left)) return left;
+        } else {
+            if (!this.isTruthy(left)) return left;
+        }
+
+        return this.evaluate(expr.right);
+    }
+
+    visitSetExpr(expr) {
+        var object = this.evaluate(expr.object);
+        if (hadRuntimeError) return;
+        var value  = this.evaluate(expr.value);
+        if (hadRuntimeError) return;
+        if (object == nil or !object.is(LoxInstance)) {
+            runtimeError(expr.name, "Only instances have fields.");
+            return;
+        }
+        object.set(expr.name, value);
+        return value;
+    }
+
+    visitSuperExpr(expr) {
+        var distance   = this.locals.get(expr);
+        var superclass = this.environment.getAt(distance,     "super");
+        var object     = this.environment.getAt(distance - 1, "this");
+        var method     = superclass.findMethod(expr.method.lexeme);
+
+        if (method == nil) {
+            runtimeError(expr.method, "Undefined property '" + expr.method.lexeme + "'.");
+            return;
+        }
+
+        return method.bind(object);
+    }
+
+    visitThisExpr(expr) {
+        return this.lookUpVariable(expr.keyword, expr);
+    }
+
+    visitUnaryExpr(expr) {
+        var right = this.evaluate(expr.right);
+        var type  = expr.operator.type;
+
+        if (type == TT_BANG)  return Boolean(!this.isTruthy(right));
+        if (type == TT_MINUS) {
+            if (right == nil or !right.is(Number)) {
+                runtimeError(expr.operator, "Operand must be a number.");
+                return;
+            }
+
+            return Number(-right.value);
+        }
+    }
+
+    visitVariableExpr(expr) {
+        return this.lookUpVariable(expr.name, expr);
+    }
+
+    lookUpVariable(name, expr) {
+        var distance = this.locals.get(expr);
+
+        if (distance != nil) {
+            return this.environment.getAt(distance, name.lexeme);
+        } else {
+            return this.globals.get(name);
+        }
+    }
+
+    isTruthy(object) {
+        if (object == nil)                                return false;
+        if (object.is(Boolean) and object.value == true)  return true;
+        if (object.is(Boolean) and object.value == false) return false;
+
+        return true;
+    }
+
+    isEqual(a, b) {
+        if (a == nil and b == nil) return true;
+        if (a == nil)              return false;
+        if (b == nil)              return false;
+
+        if (a.is(Boolean) or a.is(String) or a.is(Number)) a = a.value;
+        if (b.is(Boolean) or b.is(String) or b.is(Number)) b = b.value;
+
+        return a == b;
+    }
+}
+
+// The AST
+
+class Expr {
+
+    getClass() {
+        return Expr;
+    }
+
+    is(type) {
+        return this.getClass() == type;
+    }
+}
+
+class VariableExpr < Expr {
+    init(name) {
+        this.name = name;
+    }
+
+    getClass() {
+        return VariableExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitVariableExpr(this);
+    }
+}
+
+class UnaryExpr < Expr {
+    init(operator, right) {
+        this.operator = operator;
+        this.right    = right;
+    }
+
+    getClass() {
+        return UnaryExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitUnaryExpr(this);
+    }
+}
+
+class ThisExpr < Expr {
+    init(keyword) {
+        this.keyword = keyword;
+    }
+
+    getClass() {
+        return ThisExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitThisExpr(this);
+    }
+}
+
+class SuperExpr < Expr {
+    init(keyword, method) {
+        this.keyword = keyword;
+        this.method  = method;
+    }
+
+    getClass() {
+        return SuperExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitSuperExpr(this);
+    }
+}
+
+class SetExpr < Expr {
+    init(object, name, value) {
+        this.object = object;
+        this.name   = name;
+        this.value  = value;
+    }
+
+    getClass() {
+        return SetExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitSetExpr(this);
+    }
+}
+
+class LogicalExpr < Expr {
+    init(left, operator, right) {
+        this.left     = left;
+        this.operator = operator;
+        this.right    = right;
+    }
+
+    getClass() {
+        return LogicalExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitLogicalExpr(this);
+    }
+}
+
+class LiteralExpr < Expr {
+    init(value) {
+        this.value = value;
+    }
+
+    getClass() {
+        return LiteralExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitLiteralExpr(this);
+    }
+}
+
+class GroupingExpr < Expr {
+    init(expression) {
+        this.expression = expression;
+    }
+
+    getClass() {
+        return GroupingExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitGroupingExpr(this);
+    }
+}
+
+class GetExpr < Expr {
+    init(object, name) {
+        this.object = object;
+        this.name   = name;
+    }
+
+    getClass() {
+        return GetExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitGetExpr(this);
+    }
+}
+
+class CallExpr < Expr {
+    init(callee, paren, arguments) {
+        this.callee    = callee;
+        this.paren     = paren;
+        this.arguments = arguments;
+    }
+
+    getClass() {
+        return CallExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitCallExpr(this);
+    }
+}
+
+class BinaryExpr < Expr {
+    init(left, operator, right) {
+        this.left     = left;
+        this.operator = operator;
+        this.right    = right;
+    }
+
+    getClass() {
+        return BinaryExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitBinaryExpr(this);
+    }
+}
+
+class AssignExpr < Expr {
+    init(name, value) {
+        this.name  = name;
+        this.value = value;
+    }
+
+    getClass() {
+        return AssignExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitAssignExpr(this);
+    }
+}
+
+class WhileStmt {
+    init(condition, body) {
+        this.condition = condition;
+        this.body      = body;
+    }
+
+    accept(visitor) {
+        return visitor.visitWhileStmt(this);
+    }
+}
+
+class VarStmt {
+    init(name, initializer) {
+        this.name        = name;
+        this.initializer = initializer;
+    }
+
+    accept(visitor) {
+        return visitor.visitVarStmt(this);
+    }
+}
+
+class ReturnStmt {
+    init(keyword, value) {
+        this.keyword = keyword;
+        this.value   = value;
+    }
+
+    accept(visitor) {
+        return visitor.visitReturnStmt(this);
+    }
+}
+
+class PrintStmt {
+    init(expression) {
+        this.expression = expression;
+    }
+
+    accept(visitor) {
+        return visitor.visitPrintStmt(this);
+    }
+}
+
+class IfStmt {
+    init(condition, thenBranch, elseBranch) {
+        this.condition = condition;
+        this.thenBranch = thenBranch;
+        this.elseBranch = elseBranch;
+    }
+
+    accept(visitor) {
+        return visitor.visitIfStmt(this);
+    }
+}
+
+class FunctionStmt {
+    init(name, params, body) {
+        this.name   = name;
+        this.params = params;
+        this.body   = body;
+    }
+
+    accept(visitor) {
+        return visitor.visitFunctionStmt(this);
+    }
+}
+
+class ExpressionStmt {
+    init(expression) {
+        this.expression = expression;
+    }
+
+    accept(visitor) {
+        return visitor.visitExpressionStmt(this);
+    }
+}
+
+class ClassStmt {
+    init(name, superclass, methods) {
+        this.name = name;
+        this.superclass = superclass;
+        this.methods = methods;
+    }
+
+    accept(visitor) {
+        return visitor.visitClassStmt(this);
+    }
+}
+
+class BlockStmt {
+    init(statements) {
+        this.statements = statements;
+    }
+
+    accept(visitor) {
+        return visitor.visitBlockStmt(this);
+    }
+}
+
+class Optimizer {
+
+    execute(statements) {
+        fun f(statement) { return statement.accept(this); }
+        fun g(statement) { return statement != nil; }
+        for (var i = 0; i < 5; i = i + 1) statements = statements.map(f).filter(g);
+        return statements;
+    }
+
+    evaluate(statementOrExpr) {
+        return statementOrExpr.accept(this);
+    }
+
+    visitBlockStmt(blockStmt) {
+        fun nonNull(o) { return o != nil; }
+        blockStmt.statements = blockStmt.statements.map(this.evaluate).filter(nonNull);
+        return blockStmt;
+    }
+
+    visitClassStmt(classStmt) {
+        return classStmt;
+    }
+
+    visitExpressionStmt(expressionStmt) {
+        return expressionStmt.expression.accept(this);
+    }
+
+    visitFunctionStmt(functionStmt) {
+        return functionStmt;
+    }
+
+    visitIfStmt(ifStmt) {
+        if (ifStmt.condition.is(LiteralExpr)) {
+            var value = ifStmt.condition.value;
+            if (value == nil) {
+                if (ifStmt.elseBranch) {
+                    return ifStmt.elseBranch.accept(this);
+                } else {
+                    return nil;
+                }
+            } else if (value.is(Boolean)) {
+                if (value.value) return ifStmt.thenBranch.accept(this);
+                else if (ifStmt.elseBranch) return ifStmt.elseBranch.accept(this);
+                else return nil;
+            } else {
+                return ifStmt.thenBranch.accept(this);
+            }
+        }
+
+        ifStmt.condition  = ifStmt.condition.accept(this);
+        ifStmt.thenBranch = ifStmt.thenBranch.accept(this);
+        if (ifStmt.elseBranch) ifStmt.elseBranch = ifStmt.elseBranch.accept(this);
+
+        return ifStmt;
+    }
+
+    visitPrintStmt(printStmt) {
+        printStmt.expression = printStmt.expression.accept(this);
+        return printStmt;
+    }
+
+    visitReturnStmt(returnStmt) {
+        return returnStmt;
+    }
+
+    visitVarStmt(varStmt) {
+        return varStmt;
+    }
+
+    visitWhileStmt(whileStmt) {
+        whileStmt.condition = whileStmt.condition.accept(this);
+        whileStmt.body      = whileStmt.body.accept(this);
+        return whileStmt;
+    }
+
+    visitAssignExpr(assignExpr) {
+        assignExpr.value = assignExpr.value.accept(this);
+        return assignExpr;
+    }
+
+    visitBinaryExpr(binaryExpr) {
+        var left  = binaryExpr.left;
+        var right = binaryExpr.right;
+
+        if (binaryExpr.operator.type == TT_PLUS) {
+            if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Number(a.value + b.value));
+                    } else if (a.is(String) and b.is(String)) {
+                        return LiteralExpr(String(a.value + b.value));
+                    }
+                }
+            } else if (left.is(LiteralExpr)) {
+                var a = left.value;
+                if (a != nil) {
+                     if (a.is(Number) and a.value == 0) {
+                        return right;
+                     } else if (a.is(String) and a.value == "") {
+                        return right;
+                     }
+                }
+            } else if (right.is(LiteralExpr)) {
+                var b = right.value;
+                if (b != nil) {
+                    if (b.is(Number) and b.value == 0) {
+                        return left;
+                    } else if (b.is(String) and b.value == "") {
+                        return left;
+                    }
+                }
+            }
+        } else if (binaryExpr.operator.type == TT_MINUS) {
+            if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Number(a.value - b.value));
+                    }
+                }
+            } else if (left.is(LiteralExpr)) {
+                var a = left.value;
+                if (a != nil) {
+                     if (a.is(Number) and a.value == 0) {
+                        return UnaryExpr(Token(TT_MINUS, "-", nil, binaryExpr.operator.line), right);
+                     }
+                }
+            } else if (right.is(LiteralExpr)) {
+                var b = right.value;
+                if (b != nil) {
+                    if (b.is(Number) and b.value == 0) {
+                        return left;
+                    }
+                }
+            }
+
+        } else if (binaryExpr.operator.type == TT_SLASH) {
+            if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Number(a.value / b.value));
+                    }
+                }
+            }
+        } else if (binaryExpr.operator.type == TT_STAR) {
+            if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Number(a.value * b.value));
+                    } else if (a.is(Number) and a.value == 0) {
+                        return LiteralExpr(Number(0));
+                    } else if (b.is(Number) and b.value == 0) {
+                        return LiteralExpr(Number(0));
+                    }
+                }
+            } else if (left.is(LiteralExpr)) {
+                var a = left.value;
+                if (a != nil) {
+                    if (a.is(Number) and a.value == 0) {
+                        return LiteralExpr(Number(0));
+                    }
+                }
+            } else if (right.is(LiteralExpr)) {
+                var b = right.value;
+                if (b != nil) {print b.value;
+                    if (b.is(Number) and b.value == 0) {
+                        return LiteralExpr(Number(0));
+                    }
+                }
+            }
+        } else if (binaryExpr.operator.type == TT_GREATER) {
+             if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Boolean(a.value > b.value));
+                    }
+                }
+            }
+        } else if (binaryExpr.operator.type == TT_GREATER_EQUAL) {
+             if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Boolean(a.value >= b.value));
+                    }
+                }
+            }
+        } else if (binaryExpr.operator.type == TT_LESS) {
+             if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Boolean(a.value < b.value));
+                    }
+                }
+            }
+        } else if (binaryExpr.operator.type == TT_LESS_EQUAL) {
+             if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Boolean(a.value <= b.value));
+                    }
+                }
+            }
+        }
+
+        binaryExpr.left  = binaryExpr.left.accept(this);
+        binaryExpr.right = binaryExpr.right.accept(this);
+        return binaryExpr;
+    }
+
+    visitCallExpr(callExpr) {
+        callExpr.callee    = callExpr.callee.accept(this);
+        callExpr.arguments = callExpr.arguments.map(this.evaluate);
+        return callExpr;
+    }
+
+    visitGetExpr(getExpr) {
+        getExpr.object.accept(this);
+        return getExpr;
+    }
+
+    visitGroupingExpr(groupingExpr) {
+        if (groupingExpr.expression.is(LiteralExpr))  return groupingExpr.expression;
+        if (groupingExpr.expression.is(GroupingExpr)) return this.visitGroupingExpr(groupingExpr.expression);
+        return groupingExpr.expression.accept(this);
+    }
+
+    visitLiteralExpr(literalExpr) {
+        return literalExpr;
+    }
+
+    visitLogicalExpr(logicalExpr) {
+        var left  = logicalExpr.left;
+        var right = logicalExpr.right;
+
+        if (logicalExpr.operator.type == TT_OR) {
+            if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Boolean) and b.is(Boolean)) {
+                        return LiteralExpr(Boolean(a.value or b.value));
+                    }
+                }
+            } else if (left.is(Literal)) {
+                var a = left.value;
+                if (a == nil or a.is(Boolean) and !a.value) {
+                    return right;
+                }
+            }
+        } else if (logicalExpr.operator.type == TT_AND) {
+            if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Boolean) and b.is(Boolean)) {
+                        return LiteralExpr(Boolean(a.value and b.value));
+                    }
+                }
+            } else if (left.is(Literal)) {
+                var a = left.value;
+                if (a == nil or a.is(Boolean) and !a.value) {
+                    return left;
+                }
+            }
+        }
+
+        logicalExpr.left  = logicalExpr.left.accept(this);
+        logicalExpr.right = logicalExpr.right.accept(this);
+
+        return logicalExpr;
+    }
+
+    visitSetExpr(setExpr) {
+        setExpr.object = setExpr.object.accept(this);
+        setExpr.value  = setExpr.value.accept(this);
+        return setExpr;
+    }
+
+    visitSuperExpr(superExpr) {
+        return superExpr;
+    }
+
+    visitThisExpr(thisExpr) {
+        return thisExpr;
+    }
+
+    visitUnaryExpr(unaryExpr) {
+        unaryExpr.right = unaryExpr.right.accept(this);
+        return unaryExpr;
+    }
+
+    visitVariableExpr(variableExpr) {
+        return variableExpr;
+    }
+}
+// Error handling
+
+var hadError        = false;
+var hadRuntimeError = false;
+
+fun loxErrorToken(token, message) {
+    if (token.type == TT_EOF) loxError(token.line, " at end", message);
+    else loxError(token.line, " at '" + token.lexeme + "'", message);
+}
+
+fun loxError(line, where, message) {
+    printerr("[line " + number2string(line) + "] Error" + where + ": " + message);
+    hadError = true;
+}
+
+fun runtimeError(token, message) {
+    printerr(message + ascii(ASCII_LF) + "[line " + number2string(token.line) + "]");
+    hadRuntimeError = true;
+}
+
+fun readInput() {
+    var bytes = List();
+    var b;
+    while (b = read()) {
+        bytes.add(b);
+    }
+    return bytes;
+}
+
+// Main
+
+var scanner    = Scanner(readInput());
+var tokens     = scanner.scanTokens();
+var parser     = Parser(tokens);
+var statements = parser.parse();
+
+if (!hadError) {
+    var interpreter = Interpreter();
+    var resolver    = Resolver(interpreter);
+    resolver.resolve(statements);
+    statements = Optimizer().execute(statements);
+    if (!hadError) interpreter.interpret(statements);
+}
+
+if (hadError)        exit(65);
+if (hadRuntimeError) exit(70);
+
+class AstPrinter {
+
+    execute(statements) {
+        var str = "";
+        for (var i = 0; i < statements.length; i = i + 1) {
+            if (i != 0) str = str + ascii(ASCII_LF);
+            str = str + statements.get(i).accept(this);
+        }
+        return str;
+    }
+
+    visitBlockStmt(blockStmt) {
+        var str = "block(";
+        str = str + this.execute(blockStmt.statements);
+        return str + ")";
+    }
+
+    visitClassStmt(classStmt) {
+        var str = "(class " + classStmt.name.lexeme;
+
+        if (classStmt.superclass != nil) {
+            str = str + " < " + classStmt.superclass.accept(this);
+        }
+
+        for (var i = 0; i < classStmt.methods.length; i = i + 1) {
+            str = str + " " + classStmt.methods.get(i).accept(this);
+        }
+
+        return str + ")";
+    }
+
+    visitExpressionStmt(expressionStmt) {
+        return this.parenthesize(";", expressionStmt.expression);
+    }
+
+    visitFunctionStmt(functionStmt) {
+        var str = "(fun " + functionStmt.name.lexeme + "(";
+
+        for (var i = 0; i < functionStmt.params.length; i = i + 1) {
+            if (i != 0) str = str + " ";
+            str = str + functionStmt.params.get(0).lexeme;
+        }
+
+        str = str + ") ";
+
+        str = str + this.execute(functionStmt.body);
+
+        return str + ")";
+    }
+
+    visitIfStmt(ifStmt) {
+        if (ifStmt.elseBranch == nil) {
+            return this.parenthesize2("if", ifStmt.condition, ifStmt.thenBranch);
+        }
+
+        return this.parenthesize3("if-else", ifStmt.condition, ifStmt.thenBranch, ifStmt.elseBranch);
+    }
+
+    visitPrintStmt(printStmt) {
+        return this.parenthesize("print", printStmt.expression);
+    }
+
+    visitReturnStmt(returnStmt) {
+        if (returnStmt.value != nil) return "(return)";
+        return this.parenthesize("return", returnStmt.value);
+    }
+
+    visitVarStmt(varStmt) {
+        if (varStmt.initializer == nil) {
+            return "(var " + varStmt.name.lexeme + ")";
+        } else {
+            return "(var " + varStmt.name.lexeme + " = " + varStmt.initializer.accept(this) + ")";
+        }
+    }
+
+    visitWhileStmt(whileStmt) {
+        return this.parenthesize2("while", whileStmt.condition, whileStmt.body);
+    }
+
+    visitAssignExpr(assignExpr) {
+        return this.parenthesize("= " + assignExpr.name.lexeme, assignExpr.value);
+    }
+
+    visitBinaryExpr(binaryExpr) {
+        return this.parenthesize2(binaryExpr.operator.lexeme, binaryExpr.left, binaryExpr.right);
+    }
+
+    visitCallExpr(callExpr) {
+        var str = "(call " + callExpr.callee.accept(this);
+
+        for (var i = 0; i < callExpr.arguments.length; i = i + 1) {
+            if (i != 0) str = str + " ";
+            str = str + " " + callExpr.arguments.get(i).accept(this);
+        }
+        return str + ")";
+    }
+
+    visitGetExpr(getExpr) {
+        return this.parenthesize("." + getExpr.name.lexeme, getExpr.object);
+    }
+
+    visitGroupingExpr(groupingExpr) {
+        return this.parenthesize("group", groupingExpr.expression);
+    }
+
+    visitLiteralExpr(literalExpr) {
+        if (literalExpr.value == nil) return "nil";
+        var value = literalExpr.value;
+        // TODO: doesn't do decimal places
+        if (literalExpr.value.is(Number)) return number2string(value.value);
+        if (literalExpr.value.is(String)) return value.value;
+        if (value) return "true"; else return "false";
+    }
+
+    visitLogicalExpr(logicalExpr) {
+        return this.parenthesize2(logicalExpr.operator.lexeme, logicalExpr.left, logicalExpr.right);
+    }
+
+    visitSetExpr(setExpr) {
+        return this.parenthesize2("= " + setExpr.name.lexeme, setExpr.object, setExpr.value);
+    }
+
+    visitSuperExpr(superExpr) {
+        return this.parenthesize0("super " + superExpr.method);
+    }
+
+    visitThisExpr(thisExpr) {
+        return "this";
+    }
+
+    visitUnaryExpr(unaryExpr) {
+        return this.parenthesize(unaryExpr.operator.lexeme, unaryExpr.right);
+    }
+
+    visitVariableExpr(variableExpr) {
+        return variableExpr.name.lexeme;
+    }
+
+    parenthesize0(name) {
+        return "(" + name + ")";
+    }
+
+    parenthesize(name, expr) {
+        return "(" + name + " " + expr.accept(this) + ")";
+    }
+
+    parenthesize2(name, expr, expr2) {
+        return "(" + name + " " + expr.accept(this) + " " + expr2.accept(this) + ")";
+    }
+
+    parenthesize3(name, expr, expr2, expr3) {
+        return "(" + name + " " + expr.accept(this) + " " + expr2.accept(this) + " " + expr3.accept(this) + ")";
+    }
+}
+
+//print AstPrinter().execute(statements);
