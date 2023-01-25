@@ -1,0 +1,104 @@
+diff --git a/java/com/craftinginterpreters/lox/Interpreter.java b/java/com/craftinginterpreters/lox/Interpreter.java
+index 823503f4..1bf3d9a7 100644
+--- a/java/com/craftinginterpreters/lox/Interpreter.java
++++ b/java/com/craftinginterpreters/lox/Interpreter.java
+@@ -3,6 +3,7 @@ package com.craftinginterpreters.lox;
+ //> Statements and State import-list
+ 
+ //> Functions import-array-list
++import java.io.IOException;
+ import java.util.ArrayList;
+ //< Functions import-array-list
+ //> Resolving and Binding import-hash-map
+@@ -12,6 +13,8 @@ import java.util.List;
+ //< Statements and State import-list
+ //> Resolving and Binding import-map
+ import java.util.Map;
++
++import static java.nio.charset.StandardCharsets.UTF_8;
+ //< Resolving and Binding import-map
+ 
+ /* Evaluating Expressions interpreter-class < Statements and State interpreter
+@@ -46,6 +49,82 @@ class Interpreter implements Expr.Visitor<Object>,
+         return (double)System.currentTimeMillis() / 1000.0;
+       }
+ 
++      @Override
++      public String toString() { return "<native fn>"; }
++    });
++    globals.define("read", new LoxCallable() {
++      @Override
++      public int arity() { return 0; }
++
++      @Override
++      public Object call(Interpreter interpreter,
++                         List<Object> arguments) {
++        try
++        {
++          int b = System.in.read();
++          return b == -1 ? null : (double)b;
++        } catch (IOException e)
++        {
++          throw new RuntimeException(e);
++        }
++      }
++
++      @Override
++      public String toString() { return "<native fn>"; }
++    });
++    globals.define("utf", new LoxCallable() {
++      @Override
++      public int arity() { return 4; }
++
++      @Override
++      public Object call(Interpreter interpreter,
++                         List<Object> arguments) {
++        Object o1 = arguments.get(0);
++        Object o2 = arguments.get(1);
++        Object o3 = arguments.get(2);
++        Object o4 = arguments.get(3);
++        byte[] bytes = new byte[] {
++                o1 == null ? 0 : ((Double)o1).byteValue(),
++                o2 == null ? 0 : ((Double)o2).byteValue(),
++                o3 == null ? 0 : ((Double)o3).byteValue(),
++                o4 == null ? 0 : ((Double)o4).byteValue()
++        };
++        int count = 0;
++        if (o1 != null) count++;
++        if (o2 != null) count++;
++        if (o3 != null) count++;
++        if (o4 != null) count++;
++        return new String(bytes, 0, count, UTF_8);
++      }
++
++      @Override
++      public String toString() { return "<native fn>"; }
++    });
++    globals.define("exit", new LoxCallable() {
++      @Override
++      public int arity() { return 0; }
++
++      @Override
++      public Object call(Interpreter interpreter,
++                         List<Object> arguments) {
++        System.exit((int) arguments.get(0));
++        return null;
++      }
++
++      @Override
++      public String toString() { return "<native fn>"; }
++    });
++    globals.define("printerr", new LoxCallable() {
++      @Override
++      public int arity() { return 0; }
++
++      @Override
++      public Object call(Interpreter interpreter,
++                         List<Object> arguments) {
++        System.err.println(arguments.get(0));
++        return null;
++      }
++
+       @Override
+       public String toString() { return "<native fn>"; }
+     });
