@@ -18,24 +18,24 @@ The following native functions are required to run Lox.lox:
 * printerr(string)
     Prints the string to standard error.
 
-These are implemented in the [jlox compiler](https://github.com/mrjameshamilton/jlox).
+These are implemented in a [patch for the original jlox interpreter](https://github.com/mrjameshamilton/loxlox/blob/main/Interpreter.diff) and in the [jlox compiler](https://github.com/mrjameshamilton/jlox).
 
 ## Building
 
-Lox.lox has been tested with jlox which is provided as a git submodule, which should be checked out:
+Lox.lox has been tested with the original jlox interpreter and the jlox compiler which is provided as a git submodule, which should be checked out:
 
 ```shell
 $ git submodule update --init --recursive
 ```
 
-Lox.lox can then be compiled to a jar with jlox:
+A build script is provided to patch and build the original jlox interpreter and compile the Lox.lox to a jar with the jlox compiler:
 
 ```shell
 $ ./build.sh
 ```
 
 A Lox script can be run with the `bin/loxlox` script which will
-pipe the contents of the specified file to Lox.lox.
+pipe the contents of the specified file to the compiled Lox.lox.
 
 ```shell
 $ echo "print \"Hello World\";" > hello.lox
