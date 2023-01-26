@@ -76,12 +76,12 @@ index 823503f4..1bf3d9a7 100644
 +    });
 +    globals.define("exit", new LoxCallable() {
 +      @Override
-+      public int arity() { return 0; }
++      public int arity() { return 1; }
 +
 +      @Override
 +      public Object call(Interpreter interpreter,
 +                         List<Object> arguments) {
-+        System.exit((int) arguments.get(0));
++        System.exit((int)(double)arguments.get(0));
 +        return null;
 +      }
 +
@@ -90,7 +90,7 @@ index 823503f4..1bf3d9a7 100644
 +    });
 +    globals.define("printerr", new LoxCallable() {
 +      @Override
-+      public int arity() { return 0; }
++      public int arity() { return 1; }
 +
 +      @Override
 +      public Object call(Interpreter interpreter,
