@@ -1,0 +1,4 @@
+#!/bin/sh
+
+script_dir=$(dirname "$0")
+cat $1 | ${script_dir}/../jlox/craftinginterpreters/jlox ${script_dir}/../Lox.lox

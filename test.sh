@@ -4,7 +4,7 @@
 echo "Testing Lox.lox with original jlox interpreter"
 cd jlox || exit
 cd craftinginterpreters || exit
-dart tool/bin/test.dart jlox
+dart tool/bin/test.dart jlox -i ../../bin/jloxloxlox-original
 )
 (
 echo "Testing Lox.lox with jlox compiler"
