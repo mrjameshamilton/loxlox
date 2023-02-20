@@ -49,3 +49,41 @@ The Lox tests can be run by running the `test.sh` script.
 $ ./test.sh
 ```
 
+It's not possible to run Lox.lox with clox without modifications beyond adding the native functions due to constraints on the number of constants ("Too many constants in one chunk").
+
+## Performance
+
+As a quick performance test, running the below fibonacci example, gives the following run times (on my laptop, approximate average over several runs):
+
+<table>
+  <tr>
+    <td></td>
+    <td>jlox interpreter</td>
+    <td>jlox compiler</td>
+    <td>clox</td>
+  </tr>
+  <tr>
+    <td>Directly</td>
+    <td>1 second</td>
+    <td>0.10 seconds</td>
+    <td>0.19 seconds</td>
+  </tr>
+  <tr>
+    <td>Lox.lox</td>
+    <td>280 seconds</td>
+    <td>18 seconds</td>
+    <td>N/A</td>
+  </tr>
+</table>
+
+```name=fib.lox
+fun fib(n) {
+  if (n < 2) return n;
+  return fib(n - 2) + fib(n - 1);
+}
+
+var start = clock();
+print fib(30);
+var end = clock();
+print end - start;
+```
