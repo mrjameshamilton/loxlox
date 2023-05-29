@@ -7,15 +7,15 @@ elif [[ -n "$JAVA_HOME" ]] && [[ -x "$JAVA_HOME/bin/java" ]];  then
     echo found java executable in JAVA_HOME
     _java="$JAVA_HOME/bin/java"
 else
-    echo "Java version 18+ required"
+    echo "Java version 20 required"
     exit
 fi
 
 if [[ "$_java" ]]; then
     version=$("$_java" -version 2>&1 | awk -F '"' '/version/ {print $2}')
     echo version "$version"
-    if [[ "$version" < "18" ]]; then
-        echo "Java version 18+ required"
+    if [[ "$version" < "20" ]]; then
+        echo "Java version 20 required"
         exit
     fi
 fi
