@@ -18,17 +18,17 @@ The following native functions are required to run Lox.lox:
 * printerr(string)
     Prints the string to standard error.
 
-These are implemented in a [patch for the original jlox interpreter](https://github.com/mrjameshamilton/loxlox/blob/main/Interpreter.diff) and in the [jlox compiler](https://github.com/mrjameshamilton/jlox).
+These are implemented in a [patch for the original jlox interpreter](https://github.com/mrjameshamilton/loxlox/blob/main/Interpreter.diff), in the [jlox compiler](https://github.com/mrjameshamilton/jlox) and in my implementation of [clox](https://github.com/mrjameshamilton/clox).
 
 ## Building
 
-Lox.lox has been tested with the original jlox interpreter and the jlox compiler which is provided as a git submodule, which should be checked out:
+Lox.lox has been tested with the original jlox interpreter, the jlox compiler and clox which are provided as a git submodules, which should be checked out:
 
 ```shell
 $ git submodule update --init --recursive
 ```
 
-A build script is provided to patch and build the original jlox interpreter and compile the Lox.lox to a jar with the jlox compiler:
+You'll need Java 20, Dart 2.19 and GCC to build. A build script is provided to patch and build the original jlox interpreter and compile the Lox.lox to a jar with the jlox compiler:
 
 ```shell
 $ ./build.sh
@@ -48,8 +48,6 @@ The Lox tests can be run by running the `test.sh` script.
 ```shell
 $ ./test.sh
 ```
-
-It's not possible to run Lox.lox with clox without modifications beyond adding the native functions due to constraints on the number of constants ("Too many constants in one chunk").
 
 ## Performance
 
@@ -72,7 +70,7 @@ As a quick performance test, running the below fibonacci example, gives the foll
     <td>Lox.lox</td>
     <td>280 seconds</td>
     <td>18 seconds</td>
-    <td>N/A</td>
+    <td>54 seconds</td>
   </tr>
 </table>
 
