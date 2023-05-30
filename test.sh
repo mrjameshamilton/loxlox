@@ -13,3 +13,9 @@ bin/jlox ../Lox.lox ../lib/lox.jar
 cd craftinginterpreters || exit
 dart tool/bin/test.dart jlox -i ../../bin/loxlox
 )
+(
+echo "Testing Lox.lox with clox compiler"
+cd jlox || exit
+cd craftinginterpreters || exit
+dart tool/bin/test.dart jlox -i ../../bin/cloxloxlox
+)

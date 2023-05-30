@@ -32,3 +32,8 @@ cd jlox || eixt
 ./gradlew copyJar
 bin/jlox ../Lox.lox ../lib/lox.jar
 )
+
+(
+cd clox || exit
+gcc src/*.c -o clox
+)

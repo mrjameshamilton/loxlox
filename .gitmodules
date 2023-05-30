@@ -1,3 +1,6 @@
 [submodule "jlox"]
 	path = jlox
 	url = git@github.com:mrjameshamilton/jlox.git
+[submodule "clox"]
+	path = clox
+	url = https://github.com/mrjameshamilton/clox.git
