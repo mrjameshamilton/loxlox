@@ -70,7 +70,7 @@ As a quick performance test, running the below fibonacci example, gives the foll
     <td>Lox.lox</td>
     <td>280 seconds</td>
     <td>18 seconds</td>
-    <td>54 seconds</td>
+    <td>24 seconds</td>
   </tr>
 </table>
 
