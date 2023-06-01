@@ -35,5 +35,5 @@ bin/jlox ../Lox.lox ../lib/lox.jar
 
 (
 cd clox || exit
-gcc src/*.c -o clox
+gcc src/*.c -o clox -O3
 )
