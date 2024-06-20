@@ -104,18 +104,53 @@ class Token {
 
 // Converts positive integers to a string.
 // Used for line and function arity numbers in error messages.
-// TODO: Used in the AST printer, which can therefore not print decimals.
 fun number2string(num) {
   var s = "";
-  var m = 1;
-  while (m * 10 <= num) m = m * 10;
-  while (m >= 1) {
-      var digit = 0;
-      while (m * (digit + 1) <= num) digit = digit + 1;
-      s   = s + ascii(digit + ASCII_0);
-      num = num - m * digit;
-      m   = m / 10;
+
+  if (num < 0) {
+    s = "-";
+    num = -num;
   }
+
+  var integerPart = 0;
+  var temp = num;
+  while (temp >= 1) {
+    integerPart = integerPart + 1;
+    temp = temp - 1;
+  }
+
+  if (integerPart == 0) {
+    s = s + "0";
+  } else {
+    var m = 1;
+    while (m * 10 <= integerPart) m = m * 10;
+    while (m >= 1) {
+        var digit = 0;
+        while (m * (digit + 1) <= integerPart) digit = digit + 1;
+        s   = s + ascii(digit + ASCII_0);
+        integerPart = integerPart - m * digit;
+        m   = m / 10;
+    }
+  }
+
+  var fractionalPart = num;
+  while (fractionalPart >= 1) {
+    fractionalPart = fractionalPart - 1;
+  }
+
+  if (fractionalPart > 0) {
+    s = s + ".";
+    var precision = 6;
+    while (precision > 0 and fractionalPart > 0) {
+      fractionalPart = fractionalPart * 10;
+      var digit = 0;
+      while (digit + 1 <= fractionalPart) digit = digit + 1;
+      s = s + ascii(digit + ASCII_0);
+      fractionalPart = fractionalPart - digit;
+      precision = precision - 1;
+    }
+  }
+
   return s;
 }
 
@@ -2583,7 +2618,6 @@ class AstPrinter {
     visitLiteralExpr(literalExpr) {
         if (literalExpr.value == nil) return "nil";
         var value = literalExpr.value;
-        // TODO: doesn't do decimal places
         if (literalExpr.value.is(Number)) return number2string(value.value);
         if (literalExpr.value.is(String)) return value.value;
         if (value) return "true"; else return "false";
