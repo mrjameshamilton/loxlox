@@ -1542,6 +1542,14 @@ class Interpreter {
             toString() { return "<native fn>"; }
         }
         this.globals.define("clock", ClockFunction());
+        class PrintErrFunction < LoxCallable {
+            arity() { return 1; }
+            call(interpreter, arguments) {
+                printerr(arguments.get(0).value);
+            }
+            toString() { return "<native fn>"; }
+        }
+        this.globals.define("printerr", PrintErrFunction());
     }
 
     interpret(statements) {
