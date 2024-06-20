@@ -102,7 +102,7 @@ class Token {
     }
 }
 
-// Converts positive integers to a string.
+// Converts numbers to a string.
 // Used for line and function arity numbers in error messages.
 fun number2string(num) {
   var s = "";
