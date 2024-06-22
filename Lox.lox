@@ -1558,6 +1558,23 @@ class Interpreter {
             toString() { return "<native fn>"; }
         }
         this.globals.define("exit", ExitFunction());
+        class UtfFunction < LoxCallable {
+            arity() { return 4; }
+            call(interpreter, arguments) {
+                fun byte(b) {
+                    if (b) return b.value; else return nil;
+                }
+
+                return String(utf(
+                  byte(arguments.get(0)),
+                  byte(arguments.get(1)),
+                  byte(arguments.get(2)),
+                  byte(arguments.get(3))
+                ));
+            }
+            toString() { return "<native fn>"; }
+        }
+        this.globals.define("utf", UtfFunction());
     }
 
     interpret(statements) {
