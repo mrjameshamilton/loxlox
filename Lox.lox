@@ -1550,6 +1550,14 @@ class Interpreter {
             toString() { return "<native fn>"; }
         }
         this.globals.define("printerr", PrintErrFunction());
+        class ExitFunction < LoxCallable {
+            arity() { return 1; }
+            call(interpreter, arguments) {
+                exit(arguments.get(0).value);
+            }
+            toString() { return "<native fn>"; }
+        }
+        this.globals.define("exit", ExitFunction());
     }
 
     interpret(statements) {
