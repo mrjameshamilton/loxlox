@@ -157,28 +157,25 @@ fun number2string(num) {
 class List {
     init() {
         this.head   = nil;
+        this.tail   = nil;
         this.length = 0;
     }
 
     add(value) {
         class Node { }
         this.length = this.length + 1;
+        var node  = Node();
+        node.value = value;
+        node.next  = nil;
+
         if (this.head == nil) {
-            this.head       = Node();
-            this.head.value = value;
-            this.head.next  = nil;
+            this.head = node;
+            this.tail = node;
             return;
         }
 
-        var current = this.head;
-
-        while (current.next != nil) {
-            current = current.next;
-        }
-
-        current.next       = Node();
-        current.next.value = value;
-        current.next.next  = nil;
+        this.tail.next = node;
+        this.tail      = node;
     }
 
 
@@ -207,9 +204,12 @@ class List {
         while (current != nil) {
             if (function(current.value)) {
                 if (previous == nil) {
-                    this.head = nil;
+                    this.head = current.next;
                 } else {
                     previous.next = current.next;
+                }
+                if (current == this.tail) {
+                    this.tail = previous;
                 }
                 this.length = this.length - 1;
                 return;
@@ -277,6 +277,7 @@ class Stack < List {
 
         var current = this.head;
         this.head   = this.head.next;
+        if (this.head == nil) this.tail = nil;
         this.length = this.length - 1;
         return current.value;
     }
@@ -287,6 +288,7 @@ class Stack < List {
         newNode.value = value;
         newNode.next  = this.head;
         this.head     = newNode;
+        if (this.tail == nil) this.tail = newNode;
         this.length   = this.length + 1;
     }
 
@@ -312,6 +314,18 @@ class Map {
             return entry.key == key;
         }
         this.entries.removeIf(check);
+        this.entries.add(Entry(key, value));
+    }
+
+    // Like put(), but assumes key isn't already present, so skips
+    // the linear duplicate-key scan. O(1) instead of O(n).
+    putNew(key, value) {
+        class Entry {
+            init(key, value) {
+                this.key   = key;
+                this.value = value;
+            }
+        }
         this.entries.add(Entry(key, value));
     }
 
@@ -383,16 +397,19 @@ class Boolean < Literal {
 
 class Scanner {
     init(source) {
-        this.start   = 0;
-        this.current = 0;
-        this.line    = 1;
-        this.source  = source;
-        this.tokens  = List();
+        this.start       = 0;
+        this.current     = 0;
+        this.line        = 1;
+        this.source      = source;
+        this.tokens      = List();
+        this.startNode   = source.head;
+        this.currentNode = source.head;
     }
 
     scanTokens() {
         while (!this.isAtEnd()) {
-            this.start = this.current;
+            this.start     = this.current;
+            this.startNode = this.currentNode;
             this.scanToken();
         }
         this.addToken(TT_EOF, nil);
@@ -467,7 +484,7 @@ class Scanner {
            else                         return TT_IDENTIFIER;
        }
 
-        var text = ascii(this.source.get(this.start));
+        var text = ascii(this.startNode.value);
         while (this.isAlphaNumeric(this.peek())) {
             text = text + ascii(this.advance());
         }
@@ -480,7 +497,7 @@ class Scanner {
             return c - 48;
         }
 
-        var num = ascii2digit(this.source.get(this.current - 1));
+        var num = ascii2digit(this.startNode.value);
         while (this.isDigit(this.peek())) {
             var c = this.advance();
             num = (num * 10) + ascii2digit(c);
@@ -531,23 +548,30 @@ class Scanner {
     }
 
     advance() {
-        var c = this.source.get(this.current);
-        this.current = this.current + 1;
+        var c = this.currentNode.value;
+        this.currentNode = this.currentNode.next;
+        this.current     = this.current + 1;
         return c;
     }
 
     match(expected) {
         if (this.isAtEnd()) return false;
-        if (this.source.get(this.current) != expected) return false;
-        this.current = this.current + 1;
+        if (this.currentNode.value != expected) return false;
+        this.currentNode = this.currentNode.next;
+        this.current     = this.current + 1;
         return true;
     }
 
     addToken(type, literal) {
-        var text = this.source
-                       .sublist(this.start, this.current)
-                       .map(ascii)
-                       .toString();
+        var text = "";
+        var node = this.startNode;
+        var n    = this.current - this.start;
+        var i    = 0;
+        while (i < n) {
+            text = text + ascii(node.value);
+            node = node.next;
+            i    = i + 1;
+        }
         this.tokens.add(Token(type, text, literal, this.line));
     }
 
@@ -589,13 +613,13 @@ class Scanner {
 
     peek() {
         if (this.isAtEnd()) return nil;
-        return this.source.get(this.current);
+        return this.currentNode.value;
     }
 
     peekNext() {
         if (this.current + 1 >= this.source.length) return nil;
 
-        return this.source.get(this.current + 1);
+        return this.currentNode.next.value;
     }
 }
 
@@ -1575,6 +1599,15 @@ class Interpreter {
             toString() { return "<native fn>"; }
         }
         this.globals.define("utf", UtfFunction());
+        class ReadFunction < LoxCallable {
+            arity() { return 0; }
+            call(interpreter, arguments) {
+                var result = read();
+                if (result) return Number(result); else return nil;
+            }
+            toString() { return "<native fn>"; }
+        }
+        this.globals.define("read", ReadFunction());
     }
 
     interpret(statements) {
@@ -1593,7 +1626,7 @@ class Interpreter {
     }
 
     resolve(expr, depth) {
-        this.locals.put(expr, depth);
+        this.locals.putNew(expr, depth);
     }
 
     executeBlock(statements, environment) {
@@ -2520,6 +2553,11 @@ fun readInput() {
     var bytes = List();
     var b;
     while (b = read()) {
+        // A NUL byte marks the end of this script and isn't valid inside
+        // one, so it's used to frame multiple scripts on the same stream
+        // (needed when a self-hosted Lox.lox itself needs to read a script,
+        // since the outer read() would otherwise consume the whole stream).
+        if (b == 0) return bytes;
         bytes.add(b);
     }
     return bytes;
