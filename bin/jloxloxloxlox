@@ -1,0 +1,6 @@
+#!/bin/sh
+
+script_dir=$(dirname "$0")
+# The NUL byte marks the end of the inner Lox.lox script on stdin, so the
+# self-hosted Lox.lox knows to stop reading itself and start reading $1.
+(cat ${script_dir}/../Lox.lox; printf '\0'; cat $1) | java -cp ${script_dir}/../jlox/craftinginterpreters/build/java com.craftinginterpreters.lox.Lox ${script_dir}/../Lox.lox
