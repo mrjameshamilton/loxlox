@@ -1,3 +1,4 @@
 #!/bin/sh
 
-cat $1 | "$JAVA_HOME"/bin/java -jar "$(dirname "$0")"/../lib/lox.jar
+java="${JAVA_HOME:+$JAVA_HOME/bin/}java"
+cat $1 | "$java" -jar "$(dirname "$0")"/../lib/lox.jar

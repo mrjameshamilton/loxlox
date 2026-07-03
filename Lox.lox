@@ -5,9 +5,9 @@
 // * read(): number
 //     Returns 1 byte read from standard in.
 //     Returns `nil` if the end of the stream is reached.
-// * utf(number, number, number, number): string
-//     Takes 1, 2, 3, or 4 bytes and returns a corresponding UTF character.
-//     The Lox function `ascii` is a short-hand for utf(b1, nil, nil, nil).
+// * chr(number): string
+//     Takes a Unicode codepoint and returns the corresponding character.
+//     The Lox function `ascii` is a short-hand for chr(b) where b < 128.
 // * exit(number)
 //     Exits with the given exit code.
 // * printerr(string)
@@ -44,7 +44,7 @@ var ASCII_RIGHT_BRACE  = 125;
 
 // Convert a byte to an ASCII character string.
 fun ascii(b) {
-    return utf(b, nil, nil, nil);
+    return chr(b);
 }
 
 // One or two character tokens.
@@ -523,10 +523,10 @@ class Scanner {
 
     string() {
         fun string(b) {
-            if (b < 128) return utf(b, nil, nil, nil);
-            if (b < 224) return utf(b, this.advance(), nil, nil);
-            if (b < 240) return utf(b, this.advance(), this.advance(), nil);
-            else         return utf(b, this.advance(), this.advance(), this.advance());
+            if (b < 128) return chr(b);
+            if (b < 224) return chr((b - 192) * 64 + (this.advance() - 128));
+            if (b < 240) return chr((b - 224) * 4096 + (this.advance() - 128) * 64 + (this.advance() - 128));
+            else         return chr((b - 240) * 262144 + (this.advance() - 128) * 4096 + (this.advance() - 128) * 64 + (this.advance() - 128));
         }
 
         var str = "";
@@ -1582,23 +1582,14 @@ class Interpreter {
             toString() { return "<native fn>"; }
         }
         this.globals.define("exit", ExitFunction());
-        class UtfFunction < LoxCallable {
-            arity() { return 4; }
+        class ChrFunction < LoxCallable {
+            arity() { return 1; }
             call(interpreter, arguments) {
-                fun byte(b) {
-                    if (b) return b.value; else return nil;
-                }
-
-                return String(utf(
-                  byte(arguments.get(0)),
-                  byte(arguments.get(1)),
-                  byte(arguments.get(2)),
-                  byte(arguments.get(3))
-                ));
+                return String(chr(arguments.get(0).value));
             }
             toString() { return "<native fn>"; }
         }
-        this.globals.define("utf", UtfFunction());
+        this.globals.define("chr", ChrFunction());
         class ReadFunction < LoxCallable {
             arity() { return 0; }
             call(interpreter, arguments) {

@@ -1,5 +1,5 @@
 diff --git a/java/com/craftinginterpreters/lox/Interpreter.java b/java/com/craftinginterpreters/lox/Interpreter.java
-index 823503f4..1bf3d9a7 100644
+index 823503f4..06d8e655 100644
 --- a/java/com/craftinginterpreters/lox/Interpreter.java
 +++ b/java/com/craftinginterpreters/lox/Interpreter.java
 @@ -3,6 +3,7 @@ package com.craftinginterpreters.lox;
@@ -10,16 +10,7 @@ index 823503f4..1bf3d9a7 100644
  import java.util.ArrayList;
  //< Functions import-array-list
  //> Resolving and Binding import-hash-map
-@@ -12,6 +13,8 @@ import java.util.List;
- //< Statements and State import-list
- //> Resolving and Binding import-map
- import java.util.Map;
-+
-+import static java.nio.charset.StandardCharsets.UTF_8;
- //< Resolving and Binding import-map
- 
- /* Evaluating Expressions interpreter-class < Statements and State interpreter
-@@ -46,6 +49,82 @@ class Interpreter implements Expr.Visitor<Object>,
+@@ -46,6 +47,68 @@ class Interpreter implements Expr.Visitor<Object>,
          return (double)System.currentTimeMillis() / 1000.0;
        }
  
@@ -46,29 +37,15 @@ index 823503f4..1bf3d9a7 100644
 +      @Override
 +      public String toString() { return "<native fn>"; }
 +    });
-+    globals.define("utf", new LoxCallable() {
++    globals.define("chr", new LoxCallable() {
 +      @Override
-+      public int arity() { return 4; }
++      public int arity() { return 1; }
 +
 +      @Override
 +      public Object call(Interpreter interpreter,
 +                         List<Object> arguments) {
-+        Object o1 = arguments.get(0);
-+        Object o2 = arguments.get(1);
-+        Object o3 = arguments.get(2);
-+        Object o4 = arguments.get(3);
-+        byte[] bytes = new byte[] {
-+                o1 == null ? 0 : ((Double)o1).byteValue(),
-+                o2 == null ? 0 : ((Double)o2).byteValue(),
-+                o3 == null ? 0 : ((Double)o3).byteValue(),
-+                o4 == null ? 0 : ((Double)o4).byteValue()
-+        };
-+        int count = 0;
-+        if (o1 != null) count++;
-+        if (o2 != null) count++;
-+        if (o3 != null) count++;
-+        if (o4 != null) count++;
-+        return new String(bytes, 0, count, UTF_8);
++        int codepoint = ((Double)arguments.get(0)).intValue();
++        return new String(Character.toChars(codepoint));
 +      }
 +
 +      @Override
