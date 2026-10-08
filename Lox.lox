@@ -154,6 +154,296 @@ fun number2string(num) {
   return s;
 }
 
+// Returns the largest integer <= x.
+fun floor(x) {
+    var two52 = 4503599627370496;
+    if (x >= two52 or x <= -two52) return x; // already an integer
+
+    // Doubles in [2^52, 2^53) are exactly the integers there, so adding 2^52
+    // rounds x to the nearest integer, and subtracting it back is exact.
+    // (Likewise for negative x in (-2^53, -2^52].)
+    var r;
+    if (x >= 0) r = (x + two52) - two52;
+    else r = (x - two52) + two52;
+    if (r > x) r = r - 1; // rounded up, so step down to the floor
+    return r;
+}
+
+// Arbitrary-precision integers, used when converting number literals.
+// A sign, and the absolute value as a little-endian linked list of base 2^26
+// digits, so the product of two digits is exact.
+var BIGINTEGER_BASE = 67108864;
+
+class BigInteger {
+    // value is any integer.
+    init(value) {
+        this.negative = value < 0;
+        if (this.negative) value = -value;
+
+        this.head = nil;
+        var last  = nil;
+        while (this.head == nil or value > 0) {
+            var quotient = floor(value / BIGINTEGER_BASE);
+            var digit    = this.newDigit(value - quotient * BIGINTEGER_BASE);
+            if (last == nil) this.head = digit; else last.next = digit;
+            last  = digit;
+            value = quotient;
+        }
+    }
+
+    newDigit(value) {
+        class BigIntegerDigit { }
+        var digit   = BigIntegerDigit();
+        digit.value = value;
+        digit.next  = nil;
+        return digit;
+    }
+
+    // this = this + other
+    add(other) {
+        this.addSigned(other, other.negative);
+    }
+
+    // this = this - other
+    subtract(other) {
+        this.addSigned(other, !other.negative);
+    }
+
+    // this = this * other
+    multiply(other) {
+        var negative = this.negative != other.negative;
+
+        // Schoolbook multiplication: add this * (each digit of other) into
+        // the result, starting one digit further along each time.
+        var result = BigInteger(0);
+        var row    = result.head;
+        var b      = other.head;
+        while (b != nil) {
+            var a     = this.head;
+            var d     = row;
+            var last  = nil;
+            var carry = 0;
+            while (a != nil or carry > 0) {
+                if (d == nil) {
+                    d = result.newDigit(0);
+                    last.next = d;
+                }
+                var v = d.value + carry;
+                if (a != nil) {
+                    v = v + a.value * b.value;
+                    a = a.next;
+                }
+                carry   = floor(v / BIGINTEGER_BASE);
+                d.value = v - carry * BIGINTEGER_BASE;
+                last = d;
+                d    = d.next;
+            }
+            b = b.next;
+            if (b != nil) {
+                if (row.next == nil) row.next = result.newDigit(0);
+                row = row.next;
+            }
+        }
+
+        this.head     = result.head;
+        this.negative = negative and !this.isZero();
+    }
+
+    // this = this * 2
+    shiftLeft() {
+        this.addAbs(this);
+    }
+
+    // Returns -1, 0 or 1.
+    compare(other) {
+        if (this.negative != other.negative) {
+            if (this.negative) return -1;
+            return 1;
+        }
+        var c = this.compareAbs(other);
+        if (this.negative) return -c;
+        return c;
+    }
+
+    isZero() {
+        var digit = this.head;
+        while (digit != nil) {
+            if (digit.value != 0) return false;
+            digit = digit.next;
+        }
+        return true;
+    }
+
+    // this = this + other, using otherNegative as other's sign. This lets
+    // subtract pass other's sign flipped without modifying other (which may be this).
+    addSigned(other, otherNegative) {
+        if (this.negative == otherNegative) {
+            this.addAbs(other);
+        } else if (this.compareAbs(other) >= 0) {
+            this.subtractAbs(other);
+            if (this.isZero()) this.negative = false;
+        } else {
+            // |this| < |other|, so the result is |other| - |this|.
+            var difference = BigInteger(0);
+            difference.addAbs(other);
+            difference.subtractAbs(this);
+            this.head     = difference.head;
+            this.negative = otherNegative;
+        }
+    }
+
+    // |this| = |this| + |other|; other may be this.
+    addAbs(other) {
+        var carry = 0;
+        var d     = this.head;
+        var b     = other.head;
+        var last  = nil;
+        while (d != nil or b != nil or carry > 0) {
+            if (d == nil) {
+                d = this.newDigit(0);
+                last.next = d;
+            }
+            var v = d.value + carry;
+            if (b != nil) {
+                v = v + b.value;
+                b = b.next;
+            }
+            carry = 0;
+            if (v >= BIGINTEGER_BASE) {
+                v     = v - BIGINTEGER_BASE;
+                carry = 1;
+            }
+            d.value = v;
+            last = d;
+            d    = d.next;
+        }
+    }
+
+    // |this| = |this| - |other|, where |this| >= |other|; other may be this.
+    subtractAbs(other) {
+        var borrow = 0;
+        var d      = this.head;
+        var b      = other.head;
+        while (d != nil) {
+            var v = d.value - borrow;
+            if (b != nil) {
+                v = v - b.value;
+                b = b.next;
+            }
+            borrow = 0;
+            if (v < 0) {
+                v      = v + BIGINTEGER_BASE;
+                borrow = 1;
+            }
+            d.value = v;
+            d       = d.next;
+        }
+    }
+
+    // Returns -1, 0 or 1, comparing |this| with |other|.
+    compareAbs(other) {
+        var result = 0;
+        var a = this.head;
+        var b = other.head;
+        while (a != nil or b != nil) {
+            var x = 0;
+            var y = 0;
+            if (a != nil) {
+                x = a.value;
+                a = a.next;
+            }
+            if (b != nil) {
+                y = b.value;
+                b = b.next;
+            }
+            // Later digits are more significant, so the last difference wins.
+            if (x > y) result = 1;
+            else if (x < y) result = -1;
+        }
+        return result;
+    }
+}
+
+// IEEE 754 double-precision limits, used when converting number literals.
+var DOUBLE_SIGNIFICAND_BITS  = 53;
+var DOUBLE_MAX_EXPONENT      = 1023;  // every finite double is below 2^1024
+var DOUBLE_MIN_EXPONENT      = -1074; // the smallest subnormal is 2^-1074
+var DOUBLE_EXACT_INTEGERS    = 9007199254740992;        // 2^53: integers below it are exact
+var DOUBLE_EXACT_POWER_OF_10 = 10000000000000000000000; // 10^22: the largest exact power of ten
+
+// Returns the nearest double to numerator / denominator (BigIntegers), with
+// ties to even (like strtod). Both arguments are modified.
+fun fraction2double(numerator, denominator) {
+    fun pow2(e) {
+        var x = 1;
+        while (e > 0) {
+            x = x * 2;
+            e = e - 1;
+        }
+        while (e < 0) {
+            x = x * 0.5;
+            e = e + 1;
+        }
+        return x;
+    }
+
+    if (numerator.negative != denominator.negative) {
+        numerator.negative   = false;
+        denominator.negative = false;
+        return -fraction2double(numerator, denominator);
+    }
+    numerator.negative   = false;
+    denominator.negative = false;
+
+    if (denominator.isZero()) {
+        if (numerator.isZero()) return 0 / 0; // NaN
+        return pow2(DOUBLE_MAX_EXPONENT + 1); // infinity
+    }
+    if (numerator.isZero()) return 0;
+
+    // Scale so that denominator <= numerator < 2 * denominator; the value
+    // is then numerator / denominator * 2^e, so it lies in [2^e, 2^(e + 1)).
+    var e = 0;
+    while (numerator.compare(denominator) >= 0) {
+        denominator.shiftLeft();
+        e = e + 1;
+        if (e > DOUBLE_MAX_EXPONENT + 1) return pow2(DOUBLE_MAX_EXPONENT + 1); // infinity
+    }
+    while (numerator.compare(denominator) < 0) {
+        numerator.shiftLeft();
+        e = e - 1;
+        if (e < DOUBLE_MIN_EXPONENT - 1) return 0; // below half the smallest subnormal
+    }
+
+    // Significand bits from 2^e down to 2^DOUBLE_MIN_EXPONENT, so fewer than
+    // DOUBLE_SIGNIFICAND_BITS for subnormals.
+    var bits = e - DOUBLE_MIN_EXPONENT + 1;
+    if (bits > DOUBLE_SIGNIFICAND_BITS) bits = DOUBLE_SIGNIFICAND_BITS;
+    if (bits < 0) return 0;
+
+    // Long division, one bit at a time: q = floor(value * 2^(bits - 1 - e)).
+    // The numerator is reused for the remainder.
+    var q       = 0;
+    var lastBit = 0;
+    for (var n = 0; n < bits; n = n + 1) {
+        q       = q * 2;
+        lastBit = 0;
+        if (numerator.compare(denominator) >= 0) {
+            numerator.subtract(denominator);
+            q       = q + 1;
+            lastBit = 1;
+        }
+        numerator.shiftLeft();
+    }
+
+    // The discarded fraction of q is numerator / (2 * denominator), so
+    // compare it with a half: round to nearest, ties to even.
+    var c = numerator.compare(denominator);
+    if (c > 0 or (c == 0 and lastBit == 1)) q = q + 1;
+
+    return q * pow2(e - bits + 1);
+}
+
 class List {
     init() {
         this.head   = nil;
@@ -497,25 +787,47 @@ class Scanner {
             return c - 48;
         }
 
-        var num = ascii2digit(this.startNode.value);
+        // All the digits as an integer, and 10^(number of fraction digits).
+        var significand = ascii2digit(this.startNode.value);
+        var denominator = 1;
         while (this.isDigit(this.peek())) {
             var c = this.advance();
-            num = (num * 10) + ascii2digit(c);
+            significand = (significand * 10) + ascii2digit(c);
         }
 
         if (this.peek() == ASCII_DOT and this.isDigit(this.peekNext())) {
             this.advance(); // skip the "."
 
-            var numerator = 0;
-            var denominator = 1;
-
             while (this.isDigit(this.peek())) {
                 var c = this.advance();
-                numerator = numerator * 10 + ascii2digit(c);
+                significand = (significand * 10) + ascii2digit(c);
                 denominator = denominator * 10;
             }
+        }
 
-            num = num + (numerator / denominator);
+        // When both are exact, a single division rounds correctly;
+        // otherwise use exact arithmetic.
+        var num;
+        if (significand < DOUBLE_EXACT_INTEGERS and denominator <= DOUBLE_EXACT_POWER_OF_10) {
+            num = significand / denominator;
+        } else {
+            // Rescan the digits into exact big integers.
+            var ten            = BigInteger(10);
+            var bigNumerator   = BigInteger(0);
+            var bigDenominator = BigInteger(1);
+            var fraction       = false;
+            var node           = this.startNode;
+            for (var i = 0; i < this.current - this.start; i = i + 1) {
+                if (node.value == ASCII_DOT) {
+                    fraction = true;
+                } else {
+                    bigNumerator.multiply(ten);
+                    bigNumerator.add(BigInteger(ascii2digit(node.value)));
+                    if (fraction) bigDenominator.multiply(ten);
+                }
+                node = node.next;
+            }
+            num = fraction2double(bigNumerator, bigDenominator);
         }
 
         this.addToken(TT_NUMBER, num);
