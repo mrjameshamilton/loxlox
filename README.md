@@ -29,10 +29,21 @@ which can `include` another manifest (shared sources are in `MANIFEST.core`):
 
 * `MANIFEST.interpreter` builds `build/loxi.lox`, which is copied to `Lox.lox`.
 * `MANIFEST.astprinter` builds `build/loxast.lox`, a debug tool which prints a
-  script's AST instead of running it: `bin/loxast hello.lox`.
+  script's AST instead of running it.
 
-Each bundle also gets a `.map` file, so a line number in an error can be traced
-back to its source:
+Each bundle also gets a runner script in `build/bin/`, which runs the bundle
+on a Lox script using the host interpreter chosen by `LOX_HOST`: `clox` (the
+default), `jlox` (the patched jlox interpreter), `jloxc` (the jlox compiler) or
+`jar` (the jar compiled from the bundle by `build.sh`).
+
+```shell
+$ build/bin/loxi hello.lox
+$ LOX_HOST=jlox build/bin/loxast hello.lox
+```
+
+Each bundle also gets a `.map` file, which the runners use to rewrite clox
+stack traces from a crash inside the bundle to the source file and line. A
+line number can also be traced back to its source by hand:
 
 ```shell
 $ ./bundle.sh where build/loxi.map 1234
@@ -47,25 +58,27 @@ Lox.lox has been tested with the original jlox interpreter, the jlox compiler an
 $ git submodule update --init --recursive
 ```
 
-You'll need Java 20, Dart 2.19 and GCC to build. A build script is provided to patch and build the original jlox interpreter and compile the Lox.lox to a jar with the jlox compiler:
+You'll need Java 20, Dart 2.19 and GCC to build. A build script is provided to bundle the sources, patch and build the original jlox interpreter, build clox, and compile each bundle to a jar with the jlox compiler:
 
 ```shell
 $ ./build.sh
 ```
 
-A Lox script can be run with the `bin/loxlox` script which will
-pipe the contents of the specified file to the compiled Lox.lox.
+A Lox script can be run with Lox.lox using the `build/bin/loxi` runner, here
+with the jar compiled from it:
 
 ```shell
 $ echo "print \"Hello World\";" > hello.lox
-$ bin/loxlox hello.lox
+$ LOX_HOST=jar build/bin/loxi hello.lox
 Hello World
 ```
 
-The Lox tests can be run by running the `test.sh` script.
+The Lox tests can be run by running the `test.sh` script, which runs them
+against Lox.lox on every host that has been built, or only the given hosts.
 
 ```shell
 $ ./test.sh
+$ ./test.sh clox jar
 ```
 
 ## Performance

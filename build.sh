@@ -33,11 +33,15 @@ PATH="$(dirname "$DART"):$PATH"
 (cd jlox/craftinginterpreters || exit
 # --enforce-lockfile keeps Dart 2.19 from rewriting the old-format pubspec.lock.
 (cd tool && dart pub get --enforce-lockfile) || exit 1
-pushd java/com/craftinginterpreters/lox || exit
-git apply ../../../../../../Interpreter.diff
-popd || exit
-make jlox
-)
+pushd java/com/craftinginterpreters/lox || exit 1
+if git apply --reverse --check ../../../../../../Interpreter.diff 2>/dev/null; then
+    echo "Interpreter.diff already applied"
+else
+    git apply ../../../../../../Interpreter.diff || exit 1
+fi
+popd || exit 1
+make jlox || exit 1
+) || exit 1
 
 gradle_java_home="$JAVA_HOME"
 if [[ -d "$HOME/.sdkman/candidates/java" ]]; then
@@ -54,12 +58,20 @@ else
     echo "Using $gradle_java_home to build the jlox compiler (Gradle needs <=20)"
 fi
 (
-cd jlox || exit
-JAVA_HOME="$gradle_java_home" ./gradlew copyJar
-JAVA_HOME="$gradle_java_home" bin/jlox ../Lox.lox ../lib/lox.jar
-)
+cd jlox || exit 1
+JAVA_HOME="$gradle_java_home" ./gradlew copyJar || exit 1
+# Compile each bundle to a jar, run by its runner with LOX_HOST=jar.
+for bundle in ../build/*.lox; do
+    jar="${bundle%.lox}.jar"
+    rm -f "$jar"
+    JAVA_HOME="$gradle_java_home" bin/jlox "$bundle" "$jar" && [ -f "$jar" ] || {
+        echo "Failed to compile $bundle with the jlox compiler" >&2
+        exit 1
+    }
+done
+) || exit 1
 
 (
-cd clox || exit
+cd clox || exit 1
 gcc src/*.c -o clox -O3
-)
+) || exit 1

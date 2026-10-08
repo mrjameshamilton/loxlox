@@ -1,5 +1,0 @@
-#!/bin/sh
-
-# Prints the AST of the given Lox script, using build/loxast.lox run by clox.
-script_dir=$(dirname "$0")
-cat $1 | "${script_dir}"/../clox/clox "${script_dir}"/../build/loxast.lox
