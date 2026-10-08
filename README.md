@@ -20,6 +20,19 @@ The following native functions are required to run Lox.lox:
 
 These are implemented in a [patch for the original jlox interpreter](https://github.com/mrjameshamilton/loxlox/blob/main/Interpreter.diff), in the [jlox compiler](https://github.com/mrjameshamilton/jlox) and in my implementation of [clox](https://github.com/mrjameshamilton/clox).
 
+## Sources
+
+`Lox.lox` is generated: edit the files in `src/` and run `./bundle.sh` to
+regenerate it. The files making up each bundle are listed, in order, in a
+`MANIFEST.*` file (`MANIFEST.interpreter` builds `build/loxi.lox`, which is
+copied to `Lox.lox`). Each bundle also gets a `.map` file, so a line number
+in an error can be traced back to its source:
+
+```shell
+$ ./bundle.sh where build/loxi.map 1234
+src/frontend/Parser.lox:297
+```
+
 ## Building
 
 Lox.lox has been tested with the original jlox interpreter, the jlox compiler and clox which are provided as a git submodules, which should be checked out:

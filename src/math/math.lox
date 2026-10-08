@@ -1,0 +1,67 @@
+// Converts numbers to a string.
+// Used for line and function arity numbers in error messages.
+fun number2string(num) {
+  var s = "";
+
+  if (num < 0) {
+    s = "-";
+    num = -num;
+  }
+
+  var integerPart = 0;
+  var temp = num;
+  while (temp >= 1) {
+    integerPart = integerPart + 1;
+    temp = temp - 1;
+  }
+
+  if (integerPart == 0) {
+    s = s + "0";
+  } else {
+    var m = 1;
+    while (m * 10 <= integerPart) m = m * 10;
+    while (m >= 1) {
+        var digit = 0;
+        while (m * (digit + 1) <= integerPart) digit = digit + 1;
+        s   = s + ascii(digit + ASCII_0);
+        integerPart = integerPart - m * digit;
+        m   = m / 10;
+    }
+  }
+
+  var fractionalPart = num;
+  while (fractionalPart >= 1) {
+    fractionalPart = fractionalPart - 1;
+  }
+
+  if (fractionalPart > 0) {
+    s = s + ".";
+    var precision = 6;
+    while (precision > 0 and fractionalPart > 0) {
+      fractionalPart = fractionalPart * 10;
+      var digit = 0;
+      while (digit + 1 <= fractionalPart) digit = digit + 1;
+      s = s + ascii(digit + ASCII_0);
+      fractionalPart = fractionalPart - digit;
+      precision = precision - 1;
+    }
+  }
+
+  return s;
+}
+
+// Returns the largest integer <= x.
+fun floor(x) {
+    var two52 = 4503599627370496;
+    if (x >= two52 or x <= -two52) return x; // already an integer
+
+    // Doubles in [2^52, 2^53) are exactly the integers there, so adding 2^52
+    // rounds x to the nearest integer, and subtracting it back is exact.
+    // (Likewise for negative x in (-2^53, -2^52].)
+    var r;
+    if (x >= 0) r = (x + two52) - two52;
+    else r = (x - two52) + two52;
+    if (r > x) r = r - 1; // rounded up, so step down to the floor
+    return r;
+}
+

@@ -1,0 +1,15 @@
+class AssignExpr < Expr {
+    init(name, value) {
+        this.name  = name;
+        this.value = value;
+    }
+
+    getClass() {
+        return AssignExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitAssignExpr(this);
+    }
+}
+

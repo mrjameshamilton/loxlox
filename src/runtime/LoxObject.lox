@@ -1,0 +1,17 @@
+// The root object in the Lox type hierarchy
+class LoxObject {
+    getClass() {
+        return LoxObject;
+    }
+
+    // `is` only works for the current class, it cannot
+    //  check if a class is a subclass of another.
+    is(type) {
+        return this.getClass() == type;
+    }
+
+    isCallable() {
+        return false;
+    }
+}
+

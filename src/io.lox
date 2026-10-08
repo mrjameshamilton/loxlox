@@ -1,0 +1,14 @@
+fun readInput() {
+    var bytes = List();
+    var b;
+    while (b = read()) {
+        // A NUL byte marks the end of this script and isn't valid inside
+        // one, so it's used to frame multiple scripts on the same stream
+        // (needed when a self-hosted Lox.lox itself needs to read a script,
+        // since the outer read() would otherwise consume the whole stream).
+        if (b == 0) return bytes;
+        bytes.add(b);
+    }
+    return bytes;
+}
+

@@ -1,0 +1,51 @@
+class Environment {
+    init(enclosing) {
+        this.enclosing = enclosing;
+        this.values    = Map();
+    }
+
+    get(name) {
+        if (this.values.containsKey(name.lexeme)) {
+            return this.values.get(name.lexeme);
+        }
+
+        if (this.enclosing != nil) return this.enclosing.get(name);
+
+        runtimeError(name, "Undefined variable '" + name.lexeme + "'.");
+    }
+
+    assign(name, value) {
+        if (this.values.containsKey(name.lexeme)) {
+            this.values.put(name.lexeme, value);
+            return;
+        }
+
+        if (this.enclosing != nil) {
+            this.enclosing.assign(name, value);
+            return;
+        }
+
+        runtimeError(name, "Undefined variable '" + name.lexeme + "'.");
+    }
+
+    define(name, value) {
+        this.values.put(name, value);
+    }
+
+    ancestor(distance) {
+        var environment = this;
+        for (var i = 0; i < distance; i = i + 1) {
+            environment = environment.enclosing;
+        }
+        return environment;
+    }
+
+    getAt(distance, name) {
+        return this.ancestor(distance).values.get(name);
+    }
+
+    assignAt(distance, name, value) {
+        this.ancestor(distance).values.put(name.lexeme, value);
+    }
+}
+

@@ -1,0 +1,15 @@
+class UnaryExpr < Expr {
+    init(operator, right) {
+        this.operator = operator;
+        this.right    = right;
+    }
+
+    getClass() {
+        return UnaryExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitUnaryExpr(this);
+    }
+}
+

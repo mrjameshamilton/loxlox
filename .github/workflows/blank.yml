@@ -35,9 +35,10 @@ jobs:
         uses: dart-lang/setup-dart@v1.4
         with:
           sdk: 2.19.6
-      - name: Install Dart libs
-        run: make get
-        working-directory: jlox/craftinginterpreters
+      - name: Check Lox.lox is up to date with src/
+        run: |
+          ./bundle.sh
+          git diff --exit-code Lox.lox || { echo "::error::Lox.lox is stale: run ./bundle.sh and commit it"; exit 1; }
 
       - name: Build
         run: ./build.sh

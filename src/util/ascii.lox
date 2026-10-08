@@ -1,0 +1,34 @@
+// ASCII codes
+var ASCII_HT           = 9;
+var ASCII_LF           = 10;
+var ASCII_CR           = 13;
+var ASCII_SPACE        = 32;
+var ASCII_BANG         = 33;
+var ASCII_DOUBLE_QUOTE = 34;
+var ASCII_LEFT_PAREN   = 40;
+var ASCII_RIGHT_PAREN  = 41;
+var ASCII_STAR         = 42;
+var ASCII_PLUS         = 43;
+var ASCII_COMMA        = 44;
+var ASCII_MINUS        = 45;
+var ASCII_DOT          = 46;
+var ASCII_SLASH        = 47;
+var ASCII_0            = 48;
+var ASCII_9            = 57;
+var ASCII_SEMICOLON    = 59;
+var ASCII_LESS         = 60;
+var ASCII_EQUAL        = 61;
+var ASCII_GREATER      = 62;
+var ASCII_A            = 65;
+var ASCII_Z            = 90;
+var ASCII_UNDERSCORE   = 95;
+var ASCII_a            = 97;
+var ASCII_z            = 122;
+var ASCII_LEFT_BRACE   = 123;
+var ASCII_RIGHT_BRACE  = 125;
+
+// Convert a byte to an ASCII character string.
+fun ascii(b) {
+    return chr(b);
+}
+

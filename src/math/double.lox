@@ -1,0 +1,80 @@
+// IEEE 754 double-precision limits, used when converting number literals.
+var DOUBLE_SIGNIFICAND_BITS  = 53;
+var DOUBLE_MAX_EXPONENT      = 1023;  // every finite double is below 2^1024
+var DOUBLE_MIN_EXPONENT      = -1074; // the smallest subnormal is 2^-1074
+var DOUBLE_EXACT_INTEGERS    = 9007199254740992;        // 2^53: integers below it are exact
+var DOUBLE_EXACT_POWER_OF_10 = 10000000000000000000000; // 10^22: the largest exact power of ten
+
+// Returns the nearest double to numerator / denominator (BigIntegers), with
+// ties to even (like strtod). Both arguments are modified.
+fun fraction2double(numerator, denominator) {
+    fun pow2(e) {
+        var x = 1;
+        while (e > 0) {
+            x = x * 2;
+            e = e - 1;
+        }
+        while (e < 0) {
+            x = x * 0.5;
+            e = e + 1;
+        }
+        return x;
+    }
+
+    if (numerator.negative != denominator.negative) {
+        numerator.negative   = false;
+        denominator.negative = false;
+        return -fraction2double(numerator, denominator);
+    }
+    numerator.negative   = false;
+    denominator.negative = false;
+
+    if (denominator.isZero()) {
+        if (numerator.isZero()) return 0 / 0; // NaN
+        return pow2(DOUBLE_MAX_EXPONENT + 1); // infinity
+    }
+    if (numerator.isZero()) return 0;
+
+    // Scale so that denominator <= numerator < 2 * denominator; the value
+    // is then numerator / denominator * 2^e, so it lies in [2^e, 2^(e + 1)).
+    var e = 0;
+    while (numerator.compare(denominator) >= 0) {
+        denominator.shiftLeft();
+        e = e + 1;
+        if (e > DOUBLE_MAX_EXPONENT + 1) return pow2(DOUBLE_MAX_EXPONENT + 1); // infinity
+    }
+    while (numerator.compare(denominator) < 0) {
+        numerator.shiftLeft();
+        e = e - 1;
+        if (e < DOUBLE_MIN_EXPONENT - 1) return 0; // below half the smallest subnormal
+    }
+
+    // Significand bits from 2^e down to 2^DOUBLE_MIN_EXPONENT, so fewer than
+    // DOUBLE_SIGNIFICAND_BITS for subnormals.
+    var bits = e - DOUBLE_MIN_EXPONENT + 1;
+    if (bits > DOUBLE_SIGNIFICAND_BITS) bits = DOUBLE_SIGNIFICAND_BITS;
+    if (bits < 0) return 0;
+
+    // Long division, one bit at a time: q = floor(value * 2^(bits - 1 - e)).
+    // The numerator is reused for the remainder.
+    var q       = 0;
+    var lastBit = 0;
+    for (var n = 0; n < bits; n = n + 1) {
+        q       = q * 2;
+        lastBit = 0;
+        if (numerator.compare(denominator) >= 0) {
+            numerator.subtract(denominator);
+            q       = q + 1;
+            lastBit = 1;
+        }
+        numerator.shiftLeft();
+    }
+
+    // The discarded fraction of q is numerator / (2 * denominator), so
+    // compare it with a half: round to nearest, ties to even.
+    var c = numerator.compare(denominator);
+    if (c > 0 or (c == 0 and lastBit == 1)) q = q + 1;
+
+    return q * pow2(e - bits + 1);
+}
+

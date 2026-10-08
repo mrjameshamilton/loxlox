@@ -1,0 +1,43 @@
+class LoxClass < LoxCallable {
+    init(name, superclass, methods) {
+        this.name       = name;
+        this.superclass = superclass;
+        this.methods    = methods;
+    }
+
+    findMethod(name) {
+        if (this.methods.containsKey(name)) {
+            return this.methods.get(name);
+        }
+
+        if (this.superclass != nil) {
+            return this.superclass.findMethod(name);
+        }
+
+        return nil;
+    }
+
+    toString() {
+        return this.name;
+    }
+
+    call(interpreter, arguments) {
+        var instance = LoxInstance(this);
+        var initializer = this.findMethod("init");
+        if (initializer != nil) {
+            initializer.bind(instance).call(interpreter, arguments);
+        }
+        return instance;
+    }
+
+    arity() {
+        var initializer = this.findMethod("init");
+        if (initializer == nil) return 0;
+        return initializer.arity();
+    }
+
+    getClass() {
+        return LoxClass;
+    }
+}
+

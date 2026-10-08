@@ -1,0 +1,246 @@
+var CLASS_TYPE_NONE     = 0;
+var CLASS_TYPE_CLASS    = 1;
+var CLASS_TYPE_SUBCLASS = 2;
+
+var FUNCTION_TYPE_NONE        = 0;
+var FUNCTION_TYPE_METHOD      = 1;
+var FUNCTION_TYPE_INITIALIZER = 2;
+var FUNCTION_TYPE_FUNCTION    = 3;
+
+class Resolver {
+    init(interpreter) {
+        this.interpreter         = interpreter;
+        this.currentClassType    = CLASS_TYPE_NONE;
+        this.currentFunctionType = FUNCTION_TYPE_NONE;
+        this.scopes              = Stack();
+    }
+
+    resolve(statements) {
+        for (var i = 0; i < statements.length; i = i + 1) {
+            statements.get(i).accept(this);
+        }
+    }
+
+    visitBlockStmt(blockStmt) {
+        this.beginScope();
+        this.resolve(blockStmt.statements);
+        this.endScope();
+    }
+
+    visitClassStmt(classStmt) {
+        var enclosingClass = this.currentClassType;
+        this.currentClassType = CLASS_TYPE_CLASS;
+
+        this.declare(classStmt.name);
+        this.define(classStmt.name);
+
+        if (classStmt.superclass != nil and
+            classStmt.name.lexeme == classStmt.superclass.name.lexeme) {
+            loxErrorToken(classStmt.superclass.name, "A class can't inherit from itself.");
+        }
+
+        if (classStmt.superclass != nil) {
+            this.currentClassType = CLASS_TYPE_SUBCLASS;
+            classStmt.superclass.accept(this);
+        }
+
+        if (classStmt.superclass != nil) {
+            this.beginScope();
+            this.scopes.peek().put("super", true);
+        }
+
+        this.beginScope();
+        this.scopes.peek().put("this", true);
+
+        for (var i = 0; i < classStmt.methods.length; i = i + 1) {
+            var method = classStmt.methods.get(i);
+            var declaration = FUNCTION_TYPE_METHOD;
+            if (method.name.lexeme == "init") {
+                declaration = FUNCTION_TYPE_INITIALIZER;
+            }
+            this.resolveFunction(method, declaration);
+        }
+
+        this.endScope();
+
+        if (classStmt.superclass != nil) this.endScope();
+
+        this.currentClassType = enclosingClass;
+    }
+
+    visitExpressionStmt(expressionStmt) {
+        expressionStmt.expression.accept(this);
+    }
+
+    visitFunctionStmt(functionStmt) {
+        this.declare(functionStmt.name);
+        this.define(functionStmt.name);
+        this.resolveFunction(functionStmt, FUNCTION_TYPE_FUNCTION);
+    }
+
+    visitIfStmt(ifStmt) {
+        ifStmt.condition.accept(this);
+        ifStmt.thenBranch.accept(this);
+        if (ifStmt.elseBranch != nil) ifStmt.elseBranch.accept(this);
+    }
+
+    visitPrintStmt(printStmt) {
+        printStmt.expression.accept(this);
+    }
+
+    visitReturnStmt(returnStmt) {
+        if (this.currentFunctionType == FUNCTION_TYPE_NONE) {
+            loxErrorToken(returnStmt.keyword, "Can't return from top-level code.");
+            return;
+        }
+
+        if (returnStmt.value != nil) {
+            if (this.currentFunctionType == FUNCTION_TYPE_INITIALIZER) {
+                loxErrorToken(returnStmt.keyword, "Can't return a value from an initializer.");
+            }
+
+            returnStmt.value.accept(this);
+        }
+    }
+
+    visitVarStmt(varStmt) {
+        this.declare(varStmt.name);
+        if (varStmt.initializer != nil) varStmt.initializer.accept(this);
+        this.define(varStmt.name);
+    }
+
+    visitWhileStmt(whileStmt) {
+        whileStmt.condition.accept(this);
+        whileStmt.body.accept(this);
+    }
+
+    visitAssignExpr(assignExpr) {
+        assignExpr.value.accept(this);
+        this.resolveLocal(assignExpr, assignExpr.name);
+    }
+
+    visitBinaryExpr(binaryExpr) {
+        binaryExpr.left.accept(this);
+        binaryExpr.right.accept(this);
+    }
+
+    visitCallExpr(callExpr) {
+        callExpr.callee.accept(this);
+        var arguments = callExpr.arguments;
+        for (var i = 0; i < arguments.length; i = i + 1) {
+            arguments.get(i).accept(this);
+        }
+    }
+
+    visitGetExpr(getExpr) {
+        getExpr.object.accept(this);
+    }
+
+    visitGroupingExpr(groupingExpr) {
+        groupingExpr.expression.accept(this);
+    }
+
+    visitLiteralExpr(literalExpr) {
+        return literalExpr.value;
+    }
+
+    visitLogicalExpr(logicalExpr) {
+        logicalExpr.left.accept(this);
+        logicalExpr.right.accept(this);
+    }
+
+    visitSetExpr(setExpr) {
+        setExpr.value.accept(this);
+        setExpr.object.accept(this);
+    }
+
+    visitSuperExpr(superExpr) {
+        if (this.currentClassType == CLASS_TYPE_NONE) {
+            loxErrorToken(superExpr.keyword, "Can't use 'super' outside of a class.");
+        } else if (this.currentClassType != CLASS_TYPE_SUBCLASS) {
+            loxErrorToken(superExpr.keyword, "Can't use 'super' in a class with no superclass.");
+        }
+
+        this.resolveLocal(superExpr, superExpr.keyword);
+    }
+
+    visitThisExpr(thisExpr) {
+        if (this.currentClassType == CLASS_TYPE_NONE) {
+            loxErrorToken(thisExpr.keyword, "Can't use 'this' outside of a class.");
+            return;
+        }
+
+        this.resolveLocal(thisExpr, thisExpr.keyword);
+    }
+
+    visitUnaryExpr(unaryExpr) {
+        unaryExpr.right.accept(this);
+    }
+
+    visitVariableExpr(variableExpr) {
+        if (!this.scopes.isEmpty() and
+            this.scopes.peek().get(variableExpr.name.lexeme) == false) {
+            loxErrorToken(variableExpr.name, "Can't read local variable in its own initializer.");
+        }
+
+        this.resolveLocal(variableExpr, variableExpr.name);
+    }
+
+    beginScope() {
+        this.scopes.push(Map());
+    }
+
+    endScope() {
+        this.scopes.pop();
+    }
+
+    declare(name) {
+        if (this.scopes.length == 0) return;
+
+        var scope = this.scopes.peek();
+
+        if (scope.containsKey(name.lexeme)) {
+            loxErrorToken(name, "Already a variable with this name in this scope.");
+            return;
+        }
+
+        scope.put(name.lexeme, false);
+    }
+
+    define(name) {
+        if (this.scopes.isEmpty()) return;
+        this.scopes.peek().put(name.lexeme, true);
+    }
+
+    resolveLocal(expr, name) {
+        var top = this.scopes.head;
+        var i   = this.scopes.length - 1;
+        while (top) {
+            var map = top.value;
+            if (map.containsKey(name.lexeme)) {
+                var distance = this.scopes.length - 1 - i;
+                this.interpreter.resolve(expr, distance);
+                return;
+            }
+            top = top.next;
+            i   = i - 1;
+        }
+    }
+
+    resolveFunction(function, type) {
+        var enclosingFunction = this.currentFunctionType;
+        this.currentFunctionType = type;
+
+        this.beginScope();
+        for (var i = 0; i < function.params.length; i = i + 1) {
+            var param = function.params.get(i);
+            this.declare(param);
+            this.define(param);
+        }
+        this.resolve(function.body);
+        this.endScope();
+
+        this.currentFunctionType = enclosingFunction;
+    }
+}
+

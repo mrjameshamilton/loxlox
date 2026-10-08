@@ -1,0 +1,10 @@
+class PrintStmt {
+    init(expression) {
+        this.expression = expression;
+    }
+
+    accept(visitor) {
+        return visitor.visitPrintStmt(this);
+    }
+}
+

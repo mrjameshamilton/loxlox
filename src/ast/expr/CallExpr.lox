@@ -1,0 +1,16 @@
+class CallExpr < Expr {
+    init(callee, paren, arguments) {
+        this.callee    = callee;
+        this.paren     = paren;
+        this.arguments = arguments;
+    }
+
+    getClass() {
+        return CallExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitCallExpr(this);
+    }
+}
+

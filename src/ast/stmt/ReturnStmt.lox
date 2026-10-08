@@ -1,0 +1,11 @@
+class ReturnStmt {
+    init(keyword, value) {
+        this.keyword = keyword;
+        this.value   = value;
+    }
+
+    accept(visitor) {
+        return visitor.visitReturnStmt(this);
+    }
+}
+

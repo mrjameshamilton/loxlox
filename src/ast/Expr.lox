@@ -1,0 +1,13 @@
+// The AST
+
+class Expr {
+
+    getClass() {
+        return Expr;
+    }
+
+    is(type) {
+        return this.getClass() == type;
+    }
+}
+

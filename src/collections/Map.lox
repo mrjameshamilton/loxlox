@@ -1,0 +1,53 @@
+// An inefficient map implemented using the List linked-list.
+class Map {
+    init() {
+        this.entries = List();
+    }
+
+    put(key, value) {
+        class Entry {
+            init(key, value) {
+                this.key   = key;
+                this.value = value;
+            }
+        }
+        fun check(entry) {
+            return entry.key == key;
+        }
+        this.entries.removeIf(check);
+        this.entries.add(Entry(key, value));
+    }
+
+    // Like put(), but assumes key isn't already present, so skips
+    // the linear duplicate-key scan. O(1) instead of O(n).
+    putNew(key, value) {
+        class Entry {
+            init(key, value) {
+                this.key   = key;
+                this.value = value;
+            }
+        }
+        this.entries.add(Entry(key, value));
+    }
+
+    get(key) {
+        var current = this.entries.head;
+        while (current != nil) {
+            if (current.value.key == key) {
+                return current.value.value;
+            }
+            current = current.next;
+        }
+        return nil;
+    }
+
+    containsKey(key) {
+        var current = this.entries.head;
+        while (current != nil) {
+            if (current.value.key == key) return true;
+            current = current.next;
+        }
+        return false;
+    }
+}
+

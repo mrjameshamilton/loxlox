@@ -1,0 +1,365 @@
+class Interpreter {
+    init() {
+        this.globals     = Environment(nil);
+        this.environment = this.globals;
+        this.locals      = Map();
+        class ClockFunction < LoxCallable {
+            arity() { return 0; }
+            call(interpreter, arguments) {
+                return Number(clock());
+            }
+            toString() { return "<native fn>"; }
+        }
+        this.globals.define("clock", ClockFunction());
+        class PrintErrFunction < LoxCallable {
+            arity() { return 1; }
+            call(interpreter, arguments) {
+                printerr(arguments.get(0).value);
+            }
+            toString() { return "<native fn>"; }
+        }
+        this.globals.define("printerr", PrintErrFunction());
+        class ExitFunction < LoxCallable {
+            arity() { return 1; }
+            call(interpreter, arguments) {
+                exit(arguments.get(0).value);
+            }
+            toString() { return "<native fn>"; }
+        }
+        this.globals.define("exit", ExitFunction());
+        class ChrFunction < LoxCallable {
+            arity() { return 1; }
+            call(interpreter, arguments) {
+                return String(chr(arguments.get(0).value));
+            }
+            toString() { return "<native fn>"; }
+        }
+        this.globals.define("chr", ChrFunction());
+        class ReadFunction < LoxCallable {
+            arity() { return 0; }
+            call(interpreter, arguments) {
+                var result = read();
+                if (result) return Number(result); else return nil;
+            }
+            toString() { return "<native fn>"; }
+        }
+        this.globals.define("read", ReadFunction());
+    }
+
+    interpret(statements) {
+        for (var i = 0; i < statements.length; i = i + 1) {
+            this.execute(statements.get(i));
+            if (hadRuntimeError) return;
+        }
+    }
+
+    evaluate(expr) {
+        return expr.accept(this);
+    }
+
+    execute(statement) {
+        return statement.accept(this);
+    }
+
+    resolve(expr, depth) {
+        this.locals.putNew(expr, depth);
+    }
+
+    executeBlock(statements, environment) {
+        var previous     = this.environment;
+        this.environment = environment;
+        var returnValue  = nil;
+        for (var i = 0; i < statements.length; i = i + 1) {
+            var result = this.execute(statements.get(i));
+            if (result != nil and result.is(Return)) {
+                i           = statements.length;
+                returnValue = result;
+            }
+        }
+        this.environment = previous;
+        return returnValue;
+    }
+
+    visitBlockStmt(stmt) {
+        return this.executeBlock(stmt.statements, Environment(this.environment));
+    }
+
+    visitClassStmt(stmt) {
+        var superclass = nil;
+        if (stmt.superclass != nil) {
+            superclass = this.evaluate(stmt.superclass);
+            if (superclass == nil or !superclass.is(LoxClass)) {
+                runtimeError(stmt.superclass.name, "Superclass must be a class.");
+                return;
+            }
+        }
+
+        this.environment.define(stmt.name.lexeme, nil);
+        if (stmt.superclass != nil) {
+            this.environment = Environment(this.environment);
+            this.environment.define("super", superclass);
+        }
+
+        var methods = Map();
+        for (var i = 0; i < stmt.methods.length; i = i + 1) {
+            var method   = stmt.methods.get(i);
+            var function = LoxFunction(method, this.environment, method.name.lexeme == "init");
+            methods.put(method.name.lexeme, function);
+        }
+
+        var klass = LoxClass(stmt.name.lexeme, superclass, methods);
+
+        if (superclass != nil) this.environment = this.environment.enclosing;
+
+        this.environment.assign(stmt.name, klass);
+    }
+
+    visitExpressionStmt(stmt) {
+        return this.evaluate(stmt.expression);
+    }
+
+    visitFunctionStmt(stmt) {
+        var function = LoxFunction(stmt, this.environment, false);
+        this.environment.define(stmt.name.lexeme, function);
+    }
+
+    visitIfStmt(stmt) {
+        var result = this.evaluate(stmt.condition);
+        if (hadRuntimeError) return;
+
+        if (this.isTruthy(result)) {
+            return this.execute(stmt.thenBranch);
+        } else if (stmt.elseBranch != nil) {
+            return this.execute(stmt.elseBranch);
+        }
+    }
+
+    visitPrintStmt(stmt) {
+        var value = this.evaluate(stmt.expression);
+        if (hadRuntimeError) return;
+        if (value == nil)
+            print nil;
+        else if (value.is(String) or value.is(Number) or value.is(Boolean))
+            print value.value;
+        else
+            print value.toString();
+    }
+
+    visitReturnStmt(stmt) {
+        var value = nil;
+        if (stmt.value != nil) value = this.evaluate(stmt.value);
+        if (hadRuntimeError) return;
+        return Return(value);
+    }
+
+    visitVarStmt(stmt) {
+        var value = nil;
+        if (stmt.initializer != nil) {
+            value = this.evaluate(stmt.initializer);
+        }
+        if (hadRuntimeError) return;
+        this.environment.define(stmt.name.lexeme, value);
+    }
+
+    visitWhileStmt(stmt) {
+        while (this.isTruthy(this.evaluate(stmt.condition))) {
+            if (hadRuntimeError) return;
+            var result = this.execute(stmt.body);
+            if (result != nil) return result;
+        }
+    }
+
+    visitAssignExpr(expr) {
+        var value = this.evaluate(expr.value);
+        if (hadRuntimeError) return;
+
+        var distance = this.locals.get(expr);
+        if (distance != nil) {
+            this.environment.assignAt(distance, expr.name, value);
+        } else {
+            this.globals.assign(expr.name, value);
+        }
+
+        return value;
+    }
+
+    visitBinaryExpr(expr) {
+        var left  = this.evaluate(expr.left);
+        if (hadRuntimeError) return;
+        var right = this.evaluate(expr.right);
+        if (hadRuntimeError) return;
+        var type  = expr.operator.type;
+
+        if (type == TT_GREATER or type == TT_GREATER_EQUAL or
+            type == TT_LESS    or type == TT_LESS_EQUAL    or
+            type == TT_MINUS   or type == TT_SLASH         or
+            type == TT_STAR) {
+            if (!this.checkNumberOperands(expr.operator, left, right)) {
+                runtimeError(expr.operator, "Operands must be numbers.");
+                return;
+            }
+        }
+
+        if (type == TT_BANG_EQUAL)    return Boolean(!this.isEqual(left, right));
+        if (type == TT_EQUAL_EQUAL)   return Boolean(this.isEqual(left, right));
+        if (type == TT_GREATER)       return Boolean(left.value > right.value);
+        if (type == TT_GREATER_EQUAL) return Boolean(left.value >= right.value);
+        if (type == TT_LESS)          return Boolean(left.value < right.value);
+        if (type == TT_LESS_EQUAL)    return Boolean(left.value <= right.value);
+        if (type == TT_MINUS)         return Number(left.value - right.value);
+        if (type == TT_PLUS)
+        {
+            if (left == nil or right == nil) {
+                // Not allowed to add nil
+            } else if (left.is(Number) and right.is(Number)) {
+                return Number(left.value + right.value);
+            } else if (left.is(String) and right.is(String)) {
+                return String(left.value + right.value);
+            }
+
+            runtimeError(expr.operator, "Operands must be two numbers or two strings.");
+            return;
+        }
+        if (type == TT_SLASH) return Number(left.value / right.value);
+        if (type == TT_STAR)  return Number(left.value * right.value);
+    }
+
+    checkNumberOperands(operator, left, right) {
+        if (left == nil or right == nil) return false;
+        return left.is(Number) and right.is(Number);
+    }
+
+    visitCallExpr(expr) {
+        var callee = this.evaluate(expr.callee);
+        if (hadRuntimeError) return;
+
+        var arguments = List();
+        for (var i = 0; i < expr.arguments.length; i = i + 1) {
+            arguments.add(this.evaluate(expr.arguments.get(i)));
+            if (hadRuntimeError) return;
+        }
+
+        if (callee == nil or !callee.isCallable()) {
+            runtimeError(expr.paren, "Can only call functions and classes.");
+            return;
+        }
+
+        if (arguments.length != callee.arity()) {
+            runtimeError(expr.paren, "Expected " + number2string(callee.arity()) +
+                                     " arguments but got " + number2string(arguments.length) + ".");
+            return;
+        }
+
+        return callee.call(this, arguments);
+    }
+
+    visitGetExpr(expr) {
+        var object = this.evaluate(expr.object);
+        if (hadRuntimeError) return;
+        if (object == nil or !object.is(LoxInstance)) {
+            runtimeError(expr.name, "Only instances have properties.");
+            return;
+        }
+        return object.get(expr.name);
+    }
+
+    visitGroupingExpr(expr) {
+        return this.evaluate(expr.expression);
+    }
+
+    visitLiteralExpr(expr) {
+        return expr.value;
+    }
+
+    visitLogicalExpr(expr) {
+        var left = this.evaluate(expr.left);
+
+        if (expr.operator.type == TT_OR) {
+            if (this.isTruthy(left)) return left;
+        } else {
+            if (!this.isTruthy(left)) return left;
+        }
+
+        return this.evaluate(expr.right);
+    }
+
+    visitSetExpr(expr) {
+        var object = this.evaluate(expr.object);
+        if (hadRuntimeError) return;
+        var value  = this.evaluate(expr.value);
+        if (hadRuntimeError) return;
+        if (object == nil or !object.is(LoxInstance)) {
+            runtimeError(expr.name, "Only instances have fields.");
+            return;
+        }
+        object.set(expr.name, value);
+        return value;
+    }
+
+    visitSuperExpr(expr) {
+        var distance   = this.locals.get(expr);
+        var superclass = this.environment.getAt(distance,     "super");
+        var object     = this.environment.getAt(distance - 1, "this");
+        var method     = superclass.findMethod(expr.method.lexeme);
+
+        if (method == nil) {
+            runtimeError(expr.method, "Undefined property '" + expr.method.lexeme + "'.");
+            return;
+        }
+
+        return method.bind(object);
+    }
+
+    visitThisExpr(expr) {
+        return this.lookUpVariable(expr.keyword, expr);
+    }
+
+    visitUnaryExpr(expr) {
+        var right = this.evaluate(expr.right);
+        var type  = expr.operator.type;
+
+        if (type == TT_BANG)  return Boolean(!this.isTruthy(right));
+        if (type == TT_MINUS) {
+            if (right == nil or !right.is(Number)) {
+                runtimeError(expr.operator, "Operand must be a number.");
+                return;
+            }
+
+            return Number(-right.value);
+        }
+    }
+
+    visitVariableExpr(expr) {
+        return this.lookUpVariable(expr.name, expr);
+    }
+
+    lookUpVariable(name, expr) {
+        var distance = this.locals.get(expr);
+
+        if (distance != nil) {
+            return this.environment.getAt(distance, name.lexeme);
+        } else {
+            return this.globals.get(name);
+        }
+    }
+
+    isTruthy(object) {
+        if (object == nil)                                return false;
+        if (object.is(Boolean) and object.value == true)  return true;
+        if (object.is(Boolean) and object.value == false) return false;
+
+        return true;
+    }
+
+    isEqual(a, b) {
+        if (a == nil and b == nil) return true;
+        if (a == nil)              return false;
+        if (b == nil)              return false;
+
+        if (a.is(Boolean) or a.is(String) or a.is(Number)) a = a.value;
+        if (b.is(Boolean) or b.is(String) or b.is(Number)) b = b.value;
+
+        return a == b;
+    }
+}
+

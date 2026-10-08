@@ -1,0 +1,494 @@
+class Parser {
+    init(tokens) {
+        this.tokens   = tokens;
+        this.current  = 0;
+        this.hadError = false;
+    }
+
+    parse() {
+        var statements = List();
+        while (!this.isAtEnd()) {
+            statements.add(this.declaration());
+        }
+        return statements;
+    }
+
+    declaration() {
+        this.hadError = false;
+        var result = nil;
+        if      (this.match(TT_CLASS)) result = this.classDeclaration();
+        else if (this.match(TT_VAR))   result = this.varDeclaration();
+        else if (this.match(TT_FUN))   result = this.function("function");
+        else                           result = this.statement();
+
+        if (this.hadError) {
+            this.synchronize();
+            return;
+        }
+
+        return result;
+    }
+
+    classDeclaration() {
+        var name = this.consume(TT_IDENTIFIER, "Expect class name.");
+
+        var superclass = nil;
+        if (this.match(TT_LESS)) {
+            this.consume(TT_IDENTIFIER, "Expect superclass name.");
+            if (this.hadError) return;
+            superclass = VariableExpr(this.previous());
+        }
+
+        this.consume(TT_LEFT_BRACE, "Expect '{' before class body.");
+        if (this.hadError) return;
+
+        var methods = List();
+        while (!this.check(TT_RIGHT_BRACE) and !this.isAtEnd()) {
+            var method = this.function("method");
+            if (this.hadError) return;
+            methods.add(method);
+        }
+
+        this.consume(TT_RIGHT_BRACE, "Expect '}' after class body.");
+
+        return ClassStmt(name, superclass, methods);
+    }
+
+    statement() {
+        var result = nil;
+
+        if      (this.match(TT_FOR))        result = this.forStatement();
+        else if (this.match(TT_IF))         result = this.ifStatement();
+        else if (this.match(TT_PRINT))      result = this.printStatement();
+        else if (this.match(TT_RETURN))     result = this.returnStatement();
+        else if (this.match(TT_WHILE))      result = this.whileStatement();
+        else if (this.match(TT_LEFT_BRACE)) {
+            var body = this.block();
+            if (!this.hadError) result = BlockStmt(body);
+        } else result = this.expressionStatement();
+
+        if (this.hadError) return;
+
+        return result;
+    }
+
+    expression() {
+        var result = this.assignment();
+        if (this.hadError) return;
+        return result;
+    }
+
+    forStatement() {
+        this.consume(TT_LEFT_PAREN, "Expect '(' after 'for'.");
+        var initializer = nil;
+        if (this.match(TT_SEMICOLON)) {
+        } else if (this.match(TT_VAR)) {
+            initializer = this.varDeclaration();
+            if (this.hadError) return;
+        } else {
+            initializer = this.expressionStatement();
+            if (this.hadError) return;
+        }
+
+        var condition = nil;
+        if (!this.check(TT_SEMICOLON)) {
+            condition = this.expression();
+            if (this.hadError) return;
+        }
+        this.consume(TT_SEMICOLON, "Expect ';' after loop condition.");
+
+        var increment = nil;
+        if (!this.check(TT_RIGHT_PAREN)) {
+            increment = this.expression();
+            if (this.hadError) return;
+        }
+        this.consume(TT_RIGHT_PAREN, "Expect ')' after for clauses.");
+
+        var body = this.statement();
+        if (this.hadError) return;
+
+        if (increment != nil) {
+            var list = List();
+            list.add(body);
+            list.add(ExpressionStmt(increment));
+            body = BlockStmt(list);
+        }
+
+        if (condition == nil) condition = LiteralExpr(Boolean(true));
+
+        body = WhileStmt(condition, body);
+
+        if (initializer != nil) {
+            var list = List();
+            list.add(initializer);
+            list.add(body);
+            body = BlockStmt(list);
+        }
+
+        return body;
+    }
+
+    ifStatement() {
+        this.consume(TT_LEFT_PAREN, "Expect '(' after 'if'.");
+        var condition = this.expression();
+        if (this.hadError) return;
+        this.consume(TT_RIGHT_PAREN, "Expect ')' after 'if' condition.");
+
+        var thenBranch = this.statement();
+        if (this.hadError) return;
+        var elseBranch = nil;
+        if (this.match(TT_ELSE)) elseBranch = this.statement();
+
+        if (this.hadError) return;
+        return IfStmt(condition, thenBranch, elseBranch);
+    }
+
+    printStatement() {
+        var value = this.expression();
+        if (this.hadError) return;
+        this.consume(TT_SEMICOLON, "Expect ';' after value.");
+        return PrintStmt(value);
+    }
+
+    returnStatement() {
+        var keyword = this.previous();
+        var value = nil;
+        if (!this.check(TT_SEMICOLON)) {
+            value = this.expression();
+            if (this.hadError) return;
+        }
+        this.consume(TT_SEMICOLON, "Expect ';' after return value.");
+        return ReturnStmt(keyword, value);
+    }
+
+    varDeclaration() {
+        var name = this.consume(TT_IDENTIFIER, "Expect variable name.");
+        if (this.hadError) return;
+
+        var initializer = nil;
+        if (this.match(TT_EQUAL)) {
+            initializer = this.expression();
+            if (this.hadError) return;
+        }
+
+        this.consume(TT_SEMICOLON, "Expect ';' after variable declaration.");
+        if (this.hadError) return;
+        return VarStmt(name, initializer);
+    }
+
+    whileStatement() {
+        this.consume(TT_LEFT_PAREN, "Expect '(' after 'while'.");
+        var condition = this.expression();
+        if (this.hadError) return;
+        this.consume(TT_RIGHT_PAREN, "Expect ')' after condition.");
+        var body = this.statement();
+
+        if (this.hadError) return;
+        return WhileStmt(condition, body);
+    }
+
+    expressionStatement() {
+        var expr = this.expression();
+        if (this.hadError) return;
+        this.consume(TT_SEMICOLON, "Expect ';' after expression.");
+        return ExpressionStmt(expr);
+    }
+
+    function(kind) {
+        var name = this.consume(TT_IDENTIFIER, "Expect " + kind + " name.");
+        this.consume(TT_LEFT_PAREN, "Expect '(' after " + kind + " name.");
+        var parameters = List();
+
+        if (!this.check(TT_RIGHT_PAREN)) {
+            var continue = true;
+            while (continue) {
+                if (parameters.length >= 255) {
+                    this.error(this.peek(), "Can't have more than 255 parameters.");
+                    continue = false;
+                }
+
+                parameters.add(this.consume(TT_IDENTIFIER, "Expect parameter name."));
+
+                continue = this.match(TT_COMMA);
+            }
+        }
+
+        this.consume(TT_RIGHT_PAREN, "Expect ')' after parameters.");
+        if (this.hadError) return;
+        this.consume(TT_LEFT_BRACE,  "Expect '{' before " + kind + " body.");
+        if (this.hadError) return;
+
+        var body = this.block();
+        if (this.hadError) return;
+        return FunctionStmt(name, parameters, body);
+    }
+
+    block() {
+        var statements = List();
+
+        while (!this.check(TT_RIGHT_BRACE) and !this.isAtEnd()) {
+            statements.add(this.declaration());
+            if (this.hadError) return;
+        }
+
+        this.consume(TT_RIGHT_BRACE, "Expect '}' after block.");
+        if (this.hadError) return;
+
+        return statements;
+    }
+
+    assignment() {
+        var expr = this.or_();
+        if (this.hadError) return;
+
+        if (this.match(TT_EQUAL)) {
+            var equals   = this.previous();
+            var value    = this.assignment();
+            var exprType = expr.getClass();
+
+            if (exprType == VariableExpr) {
+                return AssignExpr(expr.name, value);
+            } else if (exprType == GetExpr) {
+                return SetExpr(expr.object, expr.name, value);
+            }
+
+            this.error(equals, "Invalid assignment target.");
+            return;
+        }
+
+        return expr;
+    }
+
+    or_() {
+        var expr = this.and_();
+        if (this.hadError) return;
+
+        while (this.match(TT_OR)) {
+            var operator = this.previous();
+            var right    = this.and_();
+            if (this.hadError) return;
+            expr = LogicalExpr(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    and_() {
+        var expr = this.equality();
+        if (this.hadError) return;
+
+        while (this.match(TT_AND)) {
+            var operator = this.previous();
+            var right    = this.equality();
+            if (this.hadError) return;
+            expr = LogicalExpr(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    equality() {
+        var expr = this.comparison();
+        if (this.hadError) return;
+
+        while (this.match2(TT_BANG_EQUAL, TT_EQUAL_EQUAL)) {
+            var operator = this.previous();
+            var right    = this.comparison();
+            expr = BinaryExpr(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    comparison() {
+        var expr = this.term();
+        if (this.hadError) return;
+
+        while (this.match4(TT_GREATER, TT_GREATER_EQUAL, TT_LESS, TT_LESS_EQUAL)) {
+            var operator = this.previous();
+            var right    = this.term();
+            expr = BinaryExpr(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    term() {
+        var expr = this.factor();
+        if (this.hadError) return;
+
+        while (this.match2(TT_MINUS, TT_PLUS)) {
+            var operator = this.previous();
+            var right    = this.factor();
+            expr = BinaryExpr(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    factor() {
+        var expr = this.unary();
+        if (this.hadError) return;
+
+        while (this.match2(TT_SLASH, TT_STAR)) {
+            var operator = this.previous();
+            var right    = this.unary();
+            expr = BinaryExpr(expr, operator, right);
+        }
+
+        return expr;
+    }
+
+    unary() {
+        if (this.match2(TT_BANG, TT_MINUS)) {
+            var operator = this.previous();
+            var right    = this.unary();
+            return UnaryExpr(operator, right);
+        }
+
+        var result = this.call();
+        if (this.hadError) return;
+        return result;
+    }
+
+    call() {
+        var expr = this.primary();
+        if (this.hadError) return;
+
+        var continue = true;
+        while (continue) {
+            if (this.match(TT_LEFT_PAREN)) {
+                expr = this.finishCall(expr);
+                if (this.hadError) return;
+            } else if (this.match(TT_DOT)) {
+                var name = this.consume(TT_IDENTIFIER, "Expect property name after '.'.");
+                expr = GetExpr(expr, name);
+            } else {
+                continue = false;
+            }
+        }
+
+        return expr;
+    }
+
+    finishCall(callee) {
+        var arguments = List();
+        if (!this.check(TT_RIGHT_PAREN)) {
+            var continue = true;
+            while (continue) {
+                if (arguments.length >= 255) {
+                    this.error(this.peek(), "Can't have more than 255 arguments.");
+                    return;
+                }
+                arguments.add(this.expression());
+                continue = this.match(TT_COMMA);
+            }
+        }
+
+        var paren = this.consume(TT_RIGHT_PAREN, "Expect ')' after arguments.");
+
+        return CallExpr(callee, paren, arguments);
+    }
+
+    primary() {
+        if (this.match(TT_FALSE))  return LiteralExpr(Boolean(false));
+        if (this.match(TT_TRUE))   return LiteralExpr(Boolean(true));
+        if (this.match(TT_NIL))    return LiteralExpr(nil);
+        if (this.match(TT_NUMBER)) return LiteralExpr(Number(this.previous().literal));
+        if (this.match(TT_STRING)) return LiteralExpr(String(this.previous().literal));
+
+        if (this.match(TT_SUPER)) {
+            var keyword = this.previous();
+            this.consume(TT_DOT, "Expect '.' after 'super'.");
+            if (this.hadError) return;
+            var method = this.consume(TT_IDENTIFIER, "Expect superclass method name.");
+            return SuperExpr(keyword, method);
+        }
+
+        if (this.match(TT_THIS))       return ThisExpr(this.previous());
+        if (this.match(TT_IDENTIFIER)) return VariableExpr(this.previous());
+
+        if (this.match(TT_LEFT_PAREN)) {
+            var expr = this.expression();
+            this.consume(TT_RIGHT_PAREN, "Expect ')' after expression.");
+            return GroupingExpr(expr);
+        }
+
+        this.error(this.peek(), "Expect expression.");
+    }
+
+    match(type) {
+        if (this.check(type)) {
+            this.advance();
+            return true;
+        }
+
+        return false;
+    }
+
+    match2(type1, type2) {
+        return this.match(type1) or this.match(type2);
+    }
+
+    match3(type1, type2, type3) {
+        return this.match2(type1, type2) or this.match(type3);
+    }
+
+    match4(type1, type2, type3, type4) {
+        return this.match3(type1, type2, type3) or
+               this.match(type4);
+    }
+
+    consume(type, message) {
+        if (this.check(type)) return this.advance();
+
+        this.error(this.peek(), message);
+    }
+
+    check(type) {
+        if (this.isAtEnd()) return false;
+        return this.peek().type == type;
+    }
+
+    advance() {
+        if (!this.isAtEnd()) this.current = this.current + 1;
+        return this.previous();
+    }
+
+    isAtEnd() {
+        return this.peek().type == TT_EOF;
+    }
+
+    peek() {
+        return this.tokens.get(this.current);
+    }
+
+    previous() {
+        return this.tokens.get(this.current - 1);
+    }
+
+    error(token, message) {
+        this.hadError = true;
+        loxErrorToken(token, message);
+    }
+
+    synchronize() {
+        this.advance();
+        while (!this.isAtEnd()) {
+            if (this.previous().type == TT_SEMICOLON) return;
+            var next = this.peek().type;
+            if (next == TT_CLASS or
+                next == TT_FUN   or
+                next == TT_VAR   or
+                next == TT_FOR   or
+                next == TT_IF    or
+                next == TT_WHILE or
+                next == TT_PRINT or
+                next == TT_RETURN) return;
+
+            this.advance();
+        }
+        this.hadError = false;
+    }
+}
+

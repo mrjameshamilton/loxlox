@@ -1,0 +1,11 @@
+class VarStmt {
+    init(name, initializer) {
+        this.name        = name;
+        this.initializer = initializer;
+    }
+
+    accept(visitor) {
+        return visitor.visitVarStmt(this);
+    }
+}
+

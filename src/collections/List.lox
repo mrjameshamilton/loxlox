@@ -1,0 +1,117 @@
+class List {
+    init() {
+        this.head   = nil;
+        this.tail   = nil;
+        this.length = 0;
+    }
+
+    add(value) {
+        class Node { }
+        this.length = this.length + 1;
+        var node  = Node();
+        node.value = value;
+        node.next  = nil;
+
+        if (this.head == nil) {
+            this.head = node;
+            this.tail = node;
+            return;
+        }
+
+        this.tail.next = node;
+        this.tail      = node;
+    }
+
+
+    isEmpty() {
+        return this.length == 0;
+    }
+
+    get(i) {
+        if (i > this.length) return nil;
+
+        var x = 0;
+        var current = this.head;
+        while (x < i) {
+            current = current.next;
+            x = x + 1;
+        }
+
+        if (current == nil) return nil;
+
+        return current.value;
+    }
+
+    removeIf(function) {
+        var previous = nil;
+        var current  = this.head;
+        while (current != nil) {
+            if (function(current.value)) {
+                if (previous == nil) {
+                    this.head = current.next;
+                } else {
+                    previous.next = current.next;
+                }
+                if (current == this.tail) {
+                    this.tail = previous;
+                }
+                this.length = this.length - 1;
+                return;
+            }
+            previous = current;
+            current  = current.next;
+        }
+    }
+
+    sublist(start, end) {
+        if (start > this.length or end > this.length) return List();
+
+        var x = 0;
+        var current = this.head;
+        while (x < start) {
+            current = current.next;
+            x = x + 1;
+        }
+
+        var result = List();
+
+        while (x < end and current != nil) {
+            result.add(current.value);
+            current = current.next;
+            x = x + 1;
+        }
+
+        return result;
+    }
+
+    map(function) {
+        var result = List();
+        var current = this.head;
+        while (current != nil) {
+            result.add(function(current.value));
+            current = current.next;
+        }
+        return result;
+    }
+
+    filter(function) {
+        var result = List();
+        var current = this.head;
+        while (current != nil) {
+            if (function(current.value)) result.add(current.value);
+            current = current.next;
+        }
+        return result;
+    }
+
+    toString() {
+        var current = this.head;
+        var result  = "";
+        while (current != nil) {
+            if (current.value != nil) result = result + current.value;
+            current = current.next;
+        }
+        return result;
+    }
+}
+

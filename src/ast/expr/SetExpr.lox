@@ -1,0 +1,16 @@
+class SetExpr < Expr {
+    init(object, name, value) {
+        this.object = object;
+        this.name   = name;
+        this.value  = value;
+    }
+
+    getClass() {
+        return SetExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitSetExpr(this);
+    }
+}
+

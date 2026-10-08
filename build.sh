@@ -20,12 +20,23 @@ if [[ "$_java" ]]; then
     fi
 fi
 
+# The craftinginterpreters Makefile runs `dart` from PATH, and its tools are
+# pre-null-safety Dart, which Dart 3+ cannot run.
+DART="${DART:-$HOME/.local/share/dart-2.19.6/dart-sdk/bin/dart}"
+[ -x "$DART" ] || DART=$(command -v dart)
+"$DART" --version 2>&1 | grep -q 'version: 2\.' || { echo "Dart 2.x required (set DART to override)" >&2; exit 1; }
+PATH="$(dirname "$DART"):$PATH"
+
+# Regenerate Lox.lox from the sources in src/.
+./bundle.sh || exit 1
+
 (cd jlox/craftinginterpreters || exit
-make get
+# --enforce-lockfile keeps Dart 2.19 from rewriting the old-format pubspec.lock.
+(cd tool && dart pub get --enforce-lockfile) || exit 1
 pushd java/com/craftinginterpreters/lox || exit
 git apply ../../../../../../Interpreter.diff
 popd || exit
-make
+make jlox
 )
 
 gradle_java_home="$JAVA_HOME"

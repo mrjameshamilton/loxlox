@@ -1,0 +1,10 @@
+class BlockStmt {
+    init(statements) {
+        this.statements = statements;
+    }
+
+    accept(visitor) {
+        return visitor.visitBlockStmt(this);
+    }
+}
+

@@ -1,0 +1,10 @@
+class ExpressionStmt {
+    init(expression) {
+        this.expression = expression;
+    }
+
+    accept(visitor) {
+        return visitor.visitExpressionStmt(this);
+    }
+}
+

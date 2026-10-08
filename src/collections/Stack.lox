@@ -1,0 +1,26 @@
+class Stack < List {
+    pop() {
+        if (this.length == 0) return nil;
+
+        var current = this.head;
+        this.head   = this.head.next;
+        if (this.head == nil) this.tail = nil;
+        this.length = this.length - 1;
+        return current.value;
+    }
+
+    push(value) {
+        class Node { }
+        var newNode   = Node();
+        newNode.value = value;
+        newNode.next  = this.head;
+        this.head     = newNode;
+        if (this.tail == nil) this.tail = newNode;
+        this.length   = this.length + 1;
+    }
+
+    peek() {
+        if (this.head == nil) return nil; else return this.head.value;
+    }
+}
+

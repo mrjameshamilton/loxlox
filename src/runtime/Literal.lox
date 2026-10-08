@@ -1,0 +1,10 @@
+class Literal < LoxObject {
+    init(value) {
+        this.value = value;
+    }
+
+    getClass() {
+        return Literal;
+    }
+}
+

@@ -1,0 +1,14 @@
+class ThisExpr < Expr {
+    init(keyword) {
+        this.keyword = keyword;
+    }
+
+    getClass() {
+        return ThisExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitThisExpr(this);
+    }
+}
+

@@ -1,0 +1,10 @@
+class Return < LoxObject {
+    init(value) {
+        this.value = value;
+    }
+
+    getClass() {
+        return Return;
+    }
+}
+

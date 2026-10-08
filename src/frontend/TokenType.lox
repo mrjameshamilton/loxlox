@@ -1,0 +1,46 @@
+// One or two character tokens.
+var TT_LEFT_PAREN    = 0;
+var TT_RIGHT_PAREN   = 1;
+var TT_LEFT_BRACE    = 2;
+var TT_RIGHT_BRACE   = 3;
+var TT_COMMA         = 4;
+var TT_DOT           = 5;
+var TT_MINUS         = 6;
+var TT_PLUS          = 7;
+var TT_SEMICOLON     = 8;
+var TT_SLASH         = 9;
+var TT_STAR          = 10;
+var TT_BANG          = 11;
+var TT_BANG_EQUAL    = 12;
+var TT_EQUAL         = 13;
+var TT_EQUAL_EQUAL   = 14;
+var TT_GREATER       = 15;
+var TT_GREATER_EQUAL = 16;
+var TT_LESS          = 17;
+var TT_LESS_EQUAL    = 18;
+
+// Literals.
+var TT_IDENTIFIER = 19;
+var TT_STRING     = 20;
+var TT_NUMBER     = 21;
+
+// Keywords.
+var TT_AND    = 22;
+var TT_CLASS  = 23;
+var TT_ELSE   = 24;
+var TT_FALSE  = 25;
+var TT_FUN    = 26;
+var TT_FOR    = 27;
+var TT_IF     = 28;
+var TT_NIL    = 29;
+var TT_OR     = 30;
+var TT_PRINT  = 31;
+var TT_RETURN = 32;
+var TT_SUPER  = 33;
+var TT_THIS   = 34;
+var TT_TRUE   = 35;
+var TT_VAR    = 36;
+var TT_WHILE  = 37;
+
+var TT_EOF = 38;
+

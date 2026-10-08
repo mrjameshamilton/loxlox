@@ -1,0 +1,12 @@
+class FunctionStmt {
+    init(name, params, body) {
+        this.name   = name;
+        this.params = params;
+        this.body   = body;
+    }
+
+    accept(visitor) {
+        return visitor.visitFunctionStmt(this);
+    }
+}
+

@@ -1,0 +1,250 @@
+class Scanner {
+    init(source) {
+        this.start       = 0;
+        this.current     = 0;
+        this.line        = 1;
+        this.source      = source;
+        this.tokens      = List();
+        this.startNode   = source.head;
+        this.currentNode = source.head;
+    }
+
+    scanTokens() {
+        while (!this.isAtEnd()) {
+            this.start     = this.current;
+            this.startNode = this.currentNode;
+            this.scanToken();
+        }
+        this.addToken(TT_EOF, nil);
+        return this.tokens;
+    }
+
+    scanToken() {
+        var c = this.advance();
+
+        if      (c == ASCII_LEFT_PAREN)  this.addToken(TT_LEFT_PAREN, nil);
+        else if (c == ASCII_RIGHT_PAREN) this.addToken(TT_RIGHT_PAREN, nil);
+        else if (c == ASCII_LEFT_BRACE)  this.addToken(TT_LEFT_BRACE, nil);
+        else if (c == ASCII_RIGHT_BRACE) this.addToken(TT_RIGHT_BRACE, nil);
+        else if (c == ASCII_COMMA)       this.addToken(TT_COMMA, nil);
+        else if (c == ASCII_DOT)         this.addToken(TT_DOT, nil);
+        else if (c == ASCII_MINUS)       this.addToken(TT_MINUS, nil);
+        else if (c == ASCII_PLUS)        this.addToken(TT_PLUS, nil);
+        else if (c == ASCII_SEMICOLON)   this.addToken(TT_SEMICOLON, nil);
+        else if (c == ASCII_STAR)        this.addToken(TT_STAR, nil);
+        else if (c == ASCII_BANG) {
+            if (this.match(ASCII_EQUAL)) this.addToken(TT_BANG_EQUAL, nil);
+            else this.addToken(TT_BANG, nil);
+        } else if (c == ASCII_EQUAL) {
+            if (this.match(ASCII_EQUAL)) this.addToken(TT_EQUAL_EQUAL, nil);
+            else this.addToken(TT_EQUAL, nil);
+        } else if (c == ASCII_LESS) {
+            if (this.match(ASCII_EQUAL)) this.addToken(TT_LESS_EQUAL, nil);
+            else this.addToken(TT_LESS, nil);
+        } else if (c == ASCII_GREATER) {
+            if (this.match(ASCII_EQUAL)) this.addToken(TT_GREATER_EQUAL, nil);
+            else this.addToken(TT_GREATER, nil);
+        } else if (c == ASCII_SLASH) {
+            if (this.match(ASCII_SLASH)) {
+                while (!this.isNewLine(this.peek()) and !this.isAtEnd()) this.advance();
+            } else {
+                this.addToken(TT_SLASH, nil);
+            }
+        } else if (this.isWhitespace(c)) {
+            // ignore whitespace but increment line numbers
+            if (this.isNewLine(c)) this.line = this.line + 1;
+        } else if (this.isDoubleQuote(c)) {
+            this.string();
+        } else {
+            if (this.isDigit(c)) {
+                this.number();
+            } else if (this.isAlpha(c)) {
+                this.identifier();
+            } else {
+                loxError(this.line, "", "Unexpected character.");
+            }
+        }
+    }
+
+    identifier() {
+       fun type(string) {
+           if      (string == "and")    return TT_AND;
+           else if (string == "class")  return TT_CLASS;
+           else if (string == "else")   return TT_ELSE;
+           else if (string == "false")  return TT_FALSE;
+           else if (string == "for")    return TT_FOR;
+           else if (string == "fun")    return TT_FUN;
+           else if (string == "if")     return TT_IF;
+           else if (string == "nil")    return TT_NIL;
+           else if (string == "or")     return TT_OR;
+           else if (string == "print")  return TT_PRINT;
+           else if (string == "return") return TT_RETURN;
+           else if (string == "super")  return TT_SUPER;
+           else if (string == "this")   return TT_THIS;
+           else if (string == "true")   return TT_TRUE;
+           else if (string == "var")    return TT_VAR;
+           else if (string == "while")  return TT_WHILE;
+           else                         return TT_IDENTIFIER;
+       }
+
+        var text = ascii(this.startNode.value);
+        while (this.isAlphaNumeric(this.peek())) {
+            text = text + ascii(this.advance());
+        }
+
+        this.addToken(type(text), nil);
+    }
+
+    number() {
+        fun ascii2digit(c) {
+            return c - 48;
+        }
+
+        // All the digits as an integer, and 10^(number of fraction digits).
+        var significand = ascii2digit(this.startNode.value);
+        var denominator = 1;
+        while (this.isDigit(this.peek())) {
+            var c = this.advance();
+            significand = (significand * 10) + ascii2digit(c);
+        }
+
+        if (this.peek() == ASCII_DOT and this.isDigit(this.peekNext())) {
+            this.advance(); // skip the "."
+
+            while (this.isDigit(this.peek())) {
+                var c = this.advance();
+                significand = (significand * 10) + ascii2digit(c);
+                denominator = denominator * 10;
+            }
+        }
+
+        // When both are exact, a single division rounds correctly;
+        // otherwise use exact arithmetic.
+        var num;
+        if (significand < DOUBLE_EXACT_INTEGERS and denominator <= DOUBLE_EXACT_POWER_OF_10) {
+            num = significand / denominator;
+        } else {
+            // Rescan the digits into exact big integers.
+            var ten            = BigInteger(10);
+            var bigNumerator   = BigInteger(0);
+            var bigDenominator = BigInteger(1);
+            var fraction       = false;
+            var node           = this.startNode;
+            for (var i = 0; i < this.current - this.start; i = i + 1) {
+                if (node.value == ASCII_DOT) {
+                    fraction = true;
+                } else {
+                    bigNumerator.multiply(ten);
+                    bigNumerator.add(BigInteger(ascii2digit(node.value)));
+                    if (fraction) bigDenominator.multiply(ten);
+                }
+                node = node.next;
+            }
+            num = fraction2double(bigNumerator, bigDenominator);
+        }
+
+        this.addToken(TT_NUMBER, num);
+    }
+
+    string() {
+        fun string(b) {
+            if (b < 128) return chr(b);
+            if (b < 224) return chr((b - 192) * 64 + (this.advance() - 128));
+            if (b < 240) return chr((b - 224) * 4096 + (this.advance() - 128) * 64 + (this.advance() - 128));
+            else         return chr((b - 240) * 262144 + (this.advance() - 128) * 4096 + (this.advance() - 128) * 64 + (this.advance() - 128));
+        }
+
+        var str = "";
+
+        while (!this.isDoubleQuote(this.peek()) and !this.isAtEnd()) {
+            if (this.isNewLine(this.peek())) this.line = this.line + 1;
+            str = str + string(this.advance());
+        }
+
+        if (this.isAtEnd()) {
+            loxError(this.line, "", "Unterminated string.");
+            return;
+        }
+
+        // Skip the closing double-quote
+        this.advance();
+
+        this.addToken(TT_STRING, str);
+    }
+
+    advance() {
+        var c = this.currentNode.value;
+        this.currentNode = this.currentNode.next;
+        this.current     = this.current + 1;
+        return c;
+    }
+
+    match(expected) {
+        if (this.isAtEnd()) return false;
+        if (this.currentNode.value != expected) return false;
+        this.currentNode = this.currentNode.next;
+        this.current     = this.current + 1;
+        return true;
+    }
+
+    addToken(type, literal) {
+        var text = "";
+        var node = this.startNode;
+        var n    = this.current - this.start;
+        var i    = 0;
+        while (i < n) {
+            text = text + ascii(node.value);
+            node = node.next;
+            i    = i + 1;
+        }
+        this.tokens.add(Token(type, text, literal, this.line));
+    }
+
+    isDigit(x) {
+        if (x == nil) return false;
+
+        return x >= ASCII_0 and x <= ASCII_9;
+    }
+
+    isAlpha(x) {
+        if (x == nil) return false;
+
+        return (x >= ASCII_a and x <= ASCII_z) or
+               (x >= ASCII_A and x <= ASCII_Z) or
+               x == ASCII_UNDERSCORE;
+    }
+
+    isAlphaNumeric(c) {
+        return this.isDigit(c) or this.isAlpha(c);
+    }
+
+    isWhitespace(c) {
+        if (c == ASCII_SPACE or this.isNewLine(c)) return true;
+
+        return c == ASCII_HT or c == ASCII_LF or c == ASCII_CR;
+    }
+
+    isNewLine(c) {
+        return c == ASCII_LF;
+    }
+
+    isDoubleQuote(c) {
+        return c == ASCII_DOUBLE_QUOTE;
+    }
+
+    isAtEnd() {
+        return this.current >= this.source.length;
+    }
+
+    peek() {
+        if (this.isAtEnd()) return nil;
+        return this.currentNode.value;
+    }
+
+    peekNext() {
+        if (this.current + 1 >= this.source.length) return nil;
+
+        return this.currentNode.next.value;
+    }
+}
+

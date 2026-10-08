@@ -1,0 +1,14 @@
+class LiteralExpr < Expr {
+    init(value) {
+        this.value = value;
+    }
+
+    getClass() {
+        return LiteralExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitLiteralExpr(this);
+    }
+}
+

@@ -1,0 +1,15 @@
+class GetExpr < Expr {
+    init(object, name) {
+        this.object = object;
+        this.name   = name;
+    }
+
+    getClass() {
+        return GetExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitGetExpr(this);
+    }
+}
+

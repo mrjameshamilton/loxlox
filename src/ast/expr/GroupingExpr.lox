@@ -1,0 +1,14 @@
+class GroupingExpr < Expr {
+    init(expression) {
+        this.expression = expression;
+    }
+
+    getClass() {
+        return GroupingExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitGroupingExpr(this);
+    }
+}
+

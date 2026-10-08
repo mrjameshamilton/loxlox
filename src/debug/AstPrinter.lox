@@ -1,0 +1,155 @@
+class AstPrinter {
+
+    execute(statements) {
+        var str = "";
+        for (var i = 0; i < statements.length; i = i + 1) {
+            if (i != 0) str = str + ascii(ASCII_LF);
+            str = str + statements.get(i).accept(this);
+        }
+        return str;
+    }
+
+    visitBlockStmt(blockStmt) {
+        var str = "block(";
+        str = str + this.execute(blockStmt.statements);
+        return str + ")";
+    }
+
+    visitClassStmt(classStmt) {
+        var str = "(class " + classStmt.name.lexeme;
+
+        if (classStmt.superclass != nil) {
+            str = str + " < " + classStmt.superclass.accept(this);
+        }
+
+        for (var i = 0; i < classStmt.methods.length; i = i + 1) {
+            str = str + " " + classStmt.methods.get(i).accept(this);
+        }
+
+        return str + ")";
+    }
+
+    visitExpressionStmt(expressionStmt) {
+        return this.parenthesize(";", expressionStmt.expression);
+    }
+
+    visitFunctionStmt(functionStmt) {
+        var str = "(fun " + functionStmt.name.lexeme + "(";
+
+        for (var i = 0; i < functionStmt.params.length; i = i + 1) {
+            if (i != 0) str = str + " ";
+            str = str + functionStmt.params.get(0).lexeme;
+        }
+
+        str = str + ") ";
+
+        str = str + this.execute(functionStmt.body);
+
+        return str + ")";
+    }
+
+    visitIfStmt(ifStmt) {
+        if (ifStmt.elseBranch == nil) {
+            return this.parenthesize2("if", ifStmt.condition, ifStmt.thenBranch);
+        }
+
+        return this.parenthesize3("if-else", ifStmt.condition, ifStmt.thenBranch, ifStmt.elseBranch);
+    }
+
+    visitPrintStmt(printStmt) {
+        return this.parenthesize("print", printStmt.expression);
+    }
+
+    visitReturnStmt(returnStmt) {
+        if (returnStmt.value != nil) return "(return)";
+        return this.parenthesize("return", returnStmt.value);
+    }
+
+    visitVarStmt(varStmt) {
+        if (varStmt.initializer == nil) {
+            return "(var " + varStmt.name.lexeme + ")";
+        } else {
+            return "(var " + varStmt.name.lexeme + " = " + varStmt.initializer.accept(this) + ")";
+        }
+    }
+
+    visitWhileStmt(whileStmt) {
+        return this.parenthesize2("while", whileStmt.condition, whileStmt.body);
+    }
+
+    visitAssignExpr(assignExpr) {
+        return this.parenthesize("= " + assignExpr.name.lexeme, assignExpr.value);
+    }
+
+    visitBinaryExpr(binaryExpr) {
+        return this.parenthesize2(binaryExpr.operator.lexeme, binaryExpr.left, binaryExpr.right);
+    }
+
+    visitCallExpr(callExpr) {
+        var str = "(call " + callExpr.callee.accept(this);
+
+        for (var i = 0; i < callExpr.arguments.length; i = i + 1) {
+            if (i != 0) str = str + " ";
+            str = str + " " + callExpr.arguments.get(i).accept(this);
+        }
+        return str + ")";
+    }
+
+    visitGetExpr(getExpr) {
+        return this.parenthesize("." + getExpr.name.lexeme, getExpr.object);
+    }
+
+    visitGroupingExpr(groupingExpr) {
+        return this.parenthesize("group", groupingExpr.expression);
+    }
+
+    visitLiteralExpr(literalExpr) {
+        if (literalExpr.value == nil) return "nil";
+        var value = literalExpr.value;
+        if (literalExpr.value.is(Number)) return number2string(value.value);
+        if (literalExpr.value.is(String)) return value.value;
+        if (value) return "true"; else return "false";
+    }
+
+    visitLogicalExpr(logicalExpr) {
+        return this.parenthesize2(logicalExpr.operator.lexeme, logicalExpr.left, logicalExpr.right);
+    }
+
+    visitSetExpr(setExpr) {
+        return this.parenthesize2("= " + setExpr.name.lexeme, setExpr.object, setExpr.value);
+    }
+
+    visitSuperExpr(superExpr) {
+        return this.parenthesize0("super " + superExpr.method);
+    }
+
+    visitThisExpr(thisExpr) {
+        return "this";
+    }
+
+    visitUnaryExpr(unaryExpr) {
+        return this.parenthesize(unaryExpr.operator.lexeme, unaryExpr.right);
+    }
+
+    visitVariableExpr(variableExpr) {
+        return variableExpr.name.lexeme;
+    }
+
+    parenthesize0(name) {
+        return "(" + name + ")";
+    }
+
+    parenthesize(name, expr) {
+        return "(" + name + " " + expr.accept(this) + ")";
+    }
+
+    parenthesize2(name, expr, expr2) {
+        return "(" + name + " " + expr.accept(this) + " " + expr2.accept(this) + ")";
+    }
+
+    parenthesize3(name, expr, expr2, expr3) {
+        return "(" + name + " " + expr.accept(this) + " " + expr2.accept(this) + " " + expr3.accept(this) + ")";
+    }
+}
+
+//print AstPrinter().execute(statements);

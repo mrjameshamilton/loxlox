@@ -1,0 +1,15 @@
+class SuperExpr < Expr {
+    init(keyword, method) {
+        this.keyword = keyword;
+        this.method  = method;
+    }
+
+    getClass() {
+        return SuperExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitSuperExpr(this);
+    }
+}
+

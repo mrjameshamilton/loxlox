@@ -1,0 +1,11 @@
+class WhileStmt {
+    init(condition, body) {
+        this.condition = condition;
+        this.body      = body;
+    }
+
+    accept(visitor) {
+        return visitor.visitWhileStmt(this);
+    }
+}
+

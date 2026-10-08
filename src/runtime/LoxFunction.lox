@@ -1,0 +1,45 @@
+class LoxFunction < LoxCallable {
+    init(declaration, closure, isInitializer) {
+        this.declaration   = declaration;
+        this.closure       = closure;
+        this.isInitializer = isInitializer;
+    }
+
+    bind(instance) {
+        var environment = Environment(this.closure);
+        environment.define("this", instance);
+        return LoxFunction(this.declaration, environment, this.isInitializer);
+    }
+
+    toString() {
+        return "<fn " + this.declaration.name.lexeme + ">";
+    }
+
+    arity() {
+        return this.declaration.params.length;
+    }
+
+    call(interpreter, arguments) {
+        var environment = Environment(this.closure);
+        for (var i = 0; i < this.arity(); i = i + 1) {
+            environment.define(this.declaration.params.get(i).lexeme, arguments.get(i));
+        }
+
+        var result = interpreter.executeBlock(this.declaration.body, environment);
+
+        if (this.isInitializer) return this.closure.getAt(0, "this");
+
+        if (result != nil) {
+            if (result.is(Return)) {
+                return result.value;
+            } else {
+                return result;
+            }
+        } else return nil;
+    }
+
+    getClass() {
+        return LoxFunction;
+    }
+}
+

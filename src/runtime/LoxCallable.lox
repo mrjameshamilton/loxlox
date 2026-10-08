@@ -1,0 +1,10 @@
+class LoxCallable < LoxObject {
+    getClass() {
+        return LoxCallable;
+    }
+
+    isCallable() {
+        return true;
+    }
+}
+

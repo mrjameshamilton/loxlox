@@ -1,0 +1,14 @@
+class VariableExpr < Expr {
+    init(name) {
+        this.name = name;
+    }
+
+    getClass() {
+        return VariableExpr;
+    }
+
+    accept(visitor) {
+        return visitor.visitVariableExpr(this);
+    }
+}
+

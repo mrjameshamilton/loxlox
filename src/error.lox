@@ -1,0 +1,20 @@
+// Error handling
+
+var hadError        = false;
+var hadRuntimeError = false;
+
+fun loxErrorToken(token, message) {
+    if (token.type == TT_EOF) loxError(token.line, " at end", message);
+    else loxError(token.line, " at '" + token.lexeme + "'", message);
+}
+
+fun loxError(line, where, message) {
+    printerr("[line " + number2string(line) + "] Error" + where + ": " + message);
+    hadError = true;
+}
+
+fun runtimeError(token, message) {
+    printerr(message + ascii(ASCII_LF) + "[line " + number2string(token.line) + "]");
+    hadRuntimeError = true;
+}
+

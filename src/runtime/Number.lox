@@ -1,0 +1,6 @@
+class Number < Literal {
+    getClass() {
+        return Number;
+    }
+}
+

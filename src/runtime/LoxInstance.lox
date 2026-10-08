@@ -1,0 +1,31 @@
+class LoxInstance < LoxObject {
+    init(klass) {
+        this.klass  = klass;
+        this.fields = Map();
+    }
+
+    get(name) {
+        if (this.fields.containsKey(name.lexeme)) {
+            return this.fields.get(name.lexeme);
+        }
+
+        var method = this.klass.findMethod(name.lexeme);
+
+        if (method != nil) return method.bind(this);
+
+        runtimeError(name, "Undefined property '" + name.lexeme + "'.");
+    }
+
+    set(name, value) {
+        this.fields.put(name.lexeme, value);
+    }
+
+    getClass() {
+        return LoxInstance;
+    }
+
+    toString() {
+        return this.klass.name + " instance";
+    }
+}
+

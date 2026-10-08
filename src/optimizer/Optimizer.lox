@@ -1,0 +1,259 @@
+class Optimizer {
+
+    execute(statements) {
+        fun f(statement) { return statement.accept(this); }
+        fun g(statement) { return statement != nil; }
+        for (var i = 0; i < 5; i = i + 1) statements = statements.map(f).filter(g);
+        return statements;
+    }
+
+    evaluate(statementOrExpr) {
+        return statementOrExpr.accept(this);
+    }
+
+    visitBlockStmt(blockStmt) {
+        fun nonNull(o) { return o != nil; }
+        blockStmt.statements = blockStmt.statements.map(this.evaluate).filter(nonNull);
+        return blockStmt;
+    }
+
+    visitClassStmt(classStmt) {
+        return classStmt;
+    }
+
+    visitExpressionStmt(expressionStmt) {
+        return expressionStmt.expression.accept(this);
+    }
+
+    visitFunctionStmt(functionStmt) {
+        return functionStmt;
+    }
+
+    visitIfStmt(ifStmt) {
+        if (ifStmt.condition.is(LiteralExpr)) {
+            var value = ifStmt.condition.value;
+            if (value == nil) {
+                if (ifStmt.elseBranch) {
+                    return ifStmt.elseBranch.accept(this);
+                } else {
+                    return nil;
+                }
+            } else if (value.is(Boolean)) {
+                if (value.value) return ifStmt.thenBranch.accept(this);
+                else if (ifStmt.elseBranch) return ifStmt.elseBranch.accept(this);
+                else return nil;
+            } else {
+                return ifStmt.thenBranch.accept(this);
+            }
+        }
+
+        ifStmt.condition  = ifStmt.condition.accept(this);
+        ifStmt.thenBranch = ifStmt.thenBranch.accept(this);
+        if (ifStmt.elseBranch) ifStmt.elseBranch = ifStmt.elseBranch.accept(this);
+
+        return ifStmt;
+    }
+
+    visitPrintStmt(printStmt) {
+        printStmt.expression = printStmt.expression.accept(this);
+        return printStmt;
+    }
+
+    visitReturnStmt(returnStmt) {
+        return returnStmt;
+    }
+
+    visitVarStmt(varStmt) {
+        return varStmt;
+    }
+
+    visitWhileStmt(whileStmt) {
+        whileStmt.condition = whileStmt.condition.accept(this);
+        whileStmt.body      = whileStmt.body.accept(this);
+        return whileStmt;
+    }
+
+    visitAssignExpr(assignExpr) {
+        assignExpr.value = assignExpr.value.accept(this);
+        return assignExpr;
+    }
+
+    visitBinaryExpr(binaryExpr) {
+        var left  = binaryExpr.left;
+        var right = binaryExpr.right;
+
+        if (binaryExpr.operator.type == TT_PLUS) {
+            if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Number(a.value + b.value));
+                    } else if (a.is(String) and b.is(String)) {
+                        return LiteralExpr(String(a.value + b.value));
+                    }
+                }
+            }
+        } else if (binaryExpr.operator.type == TT_MINUS) {
+            if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Number(a.value - b.value));
+                    }
+                }
+            }
+        } else if (binaryExpr.operator.type == TT_SLASH) {
+            if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Number(a.value / b.value));
+                    }
+                }
+            }
+        } else if (binaryExpr.operator.type == TT_STAR) {
+            if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Number(a.value * b.value));
+                    }
+                }
+            }
+        } else if (binaryExpr.operator.type == TT_GREATER) {
+             if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Boolean(a.value > b.value));
+                    }
+                }
+            }
+        } else if (binaryExpr.operator.type == TT_GREATER_EQUAL) {
+             if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Boolean(a.value >= b.value));
+                    }
+                }
+            }
+        } else if (binaryExpr.operator.type == TT_LESS) {
+             if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Boolean(a.value < b.value));
+                    }
+                }
+            }
+        } else if (binaryExpr.operator.type == TT_LESS_EQUAL) {
+             if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Number) and b.is(Number)) {
+                        return LiteralExpr(Boolean(a.value <= b.value));
+                    }
+                }
+            }
+        }
+
+        binaryExpr.left  = binaryExpr.left.accept(this);
+        binaryExpr.right = binaryExpr.right.accept(this);
+        return binaryExpr;
+    }
+
+    visitCallExpr(callExpr) {
+        callExpr.callee    = callExpr.callee.accept(this);
+        callExpr.arguments = callExpr.arguments.map(this.evaluate);
+        return callExpr;
+    }
+
+    visitGetExpr(getExpr) {
+        getExpr.object.accept(this);
+        return getExpr;
+    }
+
+    visitGroupingExpr(groupingExpr) {
+        if (groupingExpr.expression.is(LiteralExpr))  return groupingExpr.expression;
+        if (groupingExpr.expression.is(GroupingExpr)) return this.visitGroupingExpr(groupingExpr.expression);
+        return groupingExpr.expression.accept(this);
+    }
+
+    visitLiteralExpr(literalExpr) {
+        return literalExpr;
+    }
+
+    visitLogicalExpr(logicalExpr) {
+        var left  = logicalExpr.left;
+        var right = logicalExpr.right;
+
+        if (logicalExpr.operator.type == TT_OR) {
+            if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Boolean) and b.is(Boolean)) {
+                        return LiteralExpr(Boolean(a.value or b.value));
+                    }
+                }
+            } else if (left.is(Literal)) {
+                var a = left.value;
+                if (a == nil or a.is(Boolean) and !a.value) {
+                    return right;
+                }
+            }
+        } else if (logicalExpr.operator.type == TT_AND) {
+            if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
+                var a = left.value;
+                var b = right.value;
+                if (a != nil and b != nil) {
+                    if (a.is(Boolean) and b.is(Boolean)) {
+                        return LiteralExpr(Boolean(a.value and b.value));
+                    }
+                }
+            } else if (left.is(Literal)) {
+                var a = left.value;
+                if (a == nil or a.is(Boolean) and !a.value) {
+                    return left;
+                }
+            }
+        }
+
+        logicalExpr.left  = logicalExpr.left.accept(this);
+        logicalExpr.right = logicalExpr.right.accept(this);
+
+        return logicalExpr;
+    }
+
+    visitSetExpr(setExpr) {
+        setExpr.object = setExpr.object.accept(this);
+        setExpr.value  = setExpr.value.accept(this);
+        return setExpr;
+    }
+
+    visitSuperExpr(superExpr) {
+        return superExpr;
+    }
+
+    visitThisExpr(thisExpr) {
+        return thisExpr;
+    }
+
+    visitUnaryExpr(unaryExpr) {
+        unaryExpr.right = unaryExpr.right.accept(this);
+        return unaryExpr;
+    }
+
+    visitVariableExpr(variableExpr) {
+        return variableExpr;
+    }
+}
