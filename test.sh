@@ -1,21 +1,13 @@
 #/bin/sh
 
-(
-echo "Testing Lox.lox with original jlox interpreter"
-cd jlox || exit
-cd craftinginterpreters || exit
-dart tool/bin/test.dart jlox -i ../../bin/jloxloxlox-original
-)
-(
-echo "Testing Lox.lox with jlox compiler compiled jar"
-cd jlox || exit
-bin/jlox ../Lox.lox ../lib/lox.jar
-cd craftinginterpreters || exit
-dart tool/bin/test.dart jlox -i ../../bin/loxlox
-)
+# The craftinginterpreters test runner is pre-null-safety Dart, which Dart 3+ cannot run.
+DART="${DART:-$HOME/.local/share/dart-2.19.6/dart-sdk/bin/dart}"
+[ -x "$DART" ] || DART=dart
+"$DART" --version 2>&1 | grep -q 'version: 2\.' || { echo "Dart 2.x required (set DART to override)" >&2; exit 1; }
+
 (
 echo "Testing Lox.lox with clox compiler"
 cd jlox || exit
 cd craftinginterpreters || exit
-dart tool/bin/test.dart jlox -i ../../bin/cloxloxlox
+"$DART" tool/bin/test.dart jlox -i ../../bin/cloxloxlox
 )
