@@ -2305,24 +2305,6 @@ class Optimizer {
                         return LiteralExpr(String(a.value + b.value));
                     }
                 }
-            } else if (left.is(LiteralExpr)) {
-                var a = left.value;
-                if (a != nil) {
-                     if (a.is(Number) and a.value == 0) {
-                        return right;
-                     } else if (a.is(String) and a.value == "") {
-                        return right;
-                     }
-                }
-            } else if (right.is(LiteralExpr)) {
-                var b = right.value;
-                if (b != nil) {
-                    if (b.is(Number) and b.value == 0) {
-                        return left;
-                    } else if (b.is(String) and b.value == "") {
-                        return left;
-                    }
-                }
             }
         } else if (binaryExpr.operator.type == TT_MINUS) {
             if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
@@ -2333,22 +2315,7 @@ class Optimizer {
                         return LiteralExpr(Number(a.value - b.value));
                     }
                 }
-            } else if (left.is(LiteralExpr)) {
-                var a = left.value;
-                if (a != nil) {
-                     if (a.is(Number) and a.value == 0) {
-                        return UnaryExpr(Token(TT_MINUS, "-", nil, binaryExpr.operator.line), right);
-                     }
-                }
-            } else if (right.is(LiteralExpr)) {
-                var b = right.value;
-                if (b != nil) {
-                    if (b.is(Number) and b.value == 0) {
-                        return left;
-                    }
-                }
             }
-
         } else if (binaryExpr.operator.type == TT_SLASH) {
             if (left.is(LiteralExpr) and right.is(LiteralExpr)) {
                 var a = left.value;
@@ -2366,24 +2333,6 @@ class Optimizer {
                 if (a != nil and b != nil) {
                     if (a.is(Number) and b.is(Number)) {
                         return LiteralExpr(Number(a.value * b.value));
-                    } else if (a.is(Number) and a.value == 0) {
-                        return LiteralExpr(Number(0));
-                    } else if (b.is(Number) and b.value == 0) {
-                        return LiteralExpr(Number(0));
-                    }
-                }
-            } else if (left.is(LiteralExpr)) {
-                var a = left.value;
-                if (a != nil) {
-                    if (a.is(Number) and a.value == 0) {
-                        return LiteralExpr(Number(0));
-                    }
-                }
-            } else if (right.is(LiteralExpr)) {
-                var b = right.value;
-                if (b != nil) {print b.value;
-                    if (b.is(Number) and b.value == 0) {
-                        return LiteralExpr(Number(0));
                     }
                 }
             }
