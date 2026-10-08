@@ -9,9 +9,9 @@ The following native functions are required to run Lox.lox:
 * read(): number
     Returns 1 byte read from standard in.
     Returns `nil` if the end of the stream is reached.
-* utf(number, number, number, number): string
-    Takes 1, 2, 3, or 4 bytes and returns a corresponding UTF character.
-    The Lox function `ascii` is a short-hand for utf(b1, nil, nil, nil).
+* chr(number): string
+    Takes a Unicode codepoint and returns the corresponding character.
+    The Lox function `ascii` is a short-hand for chr(b) where b < 128.
     Lox supports UTF characters in strings but not other tokens.
 * exit(number)
     Exits with the given exit code; used to exit with 65 (error) or 70 (runtime error).
