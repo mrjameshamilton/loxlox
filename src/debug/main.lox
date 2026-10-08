@@ -1,0 +1,16 @@
+// Main
+
+var scanner    = Scanner(readInput());
+var tokens     = scanner.scanTokens();
+var parser     = Parser(tokens);
+var statements = parser.parse();
+
+if (!hadError) {
+    var resolver = Resolver(Interpreter());
+    resolver.resolve(statements);
+    statements = Optimizer().execute(statements);
+}
+
+if (hadError) exit(65);
+
+print AstPrinter().execute(statements);

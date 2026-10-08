@@ -9,7 +9,8 @@
 #   ./bundle.sh where build/out.map N   print the source file:line of bundle line N
 #
 # A manifest lists one path per line, relative to the repository root; blank
-# lines and lines starting with '#' are ignored. The .map file has one line per
+# lines and lines starting with '#' are ignored. A line "include MANIFEST.y"
+# lists MANIFEST.y's sources at that point. The .map file has one line per
 # source: "<first bundle line> <path>".
 
 set -euo pipefail
@@ -21,10 +22,37 @@ fail() {
     exit 1
 }
 
+# expand MANIFEST [INCLUDING...]: appends MANIFEST's sources to SOURCES,
+# expanding includes; INCLUDING is the chain of manifests including it.
+SOURCES=()
+expand() {
+    local manifest="$1"
+    shift
+    [ -f "$manifest" ] || fail "no such manifest: $manifest${1:+ (included by $1)}"
+    local m
+    for m in "$@"; do
+        [ "$m" = "$manifest" ] || continue
+        fail "include cycle: $manifest"
+    done
+
+    local entry
+    while IFS= read -r entry || [ -n "$entry" ]; do
+        case "$entry" in
+            ''|'#'*) ;;
+            'include '*) expand "${entry#include }" "$manifest" "$@" ;;
+            *)
+                [ -f "$entry" ] || fail "no such file: $entry (in $manifest)"
+                SOURCES+=("$entry")
+                ;;
+        esac
+    done < "$manifest"
+}
+
 # bundle MANIFEST OUT: writes OUT.lox and OUT.map.
 bundle() {
     local manifest="$1" out="$2"
-    [ -f "$manifest" ] || fail "no such manifest: $manifest"
+    SOURCES=()
+    expand "$manifest"
     mkdir -p "$(dirname "$out")"
 
     local lox="$out.lox.tmp" map="$out.map.tmp"
@@ -33,14 +61,12 @@ bundle() {
     : > "$map"
 
     local line=1 path
-    while IFS= read -r path || [ -n "$path" ]; do
-        case "$path" in ''|'#'*) continue ;; esac
-        [ -f "$path" ] || fail "no such file: $path (in $manifest)"
+    for path in "${SOURCES[@]}"; do
         [ -s "$path" ] && [ "$(tail -c1 "$path")" = "" ] || fail "missing final newline: $path"
         echo "$line $path" >> "$map"
         cat "$path" >> "$lox"
         line=$((line + $(wc -l < "$path")))
-    done < "$manifest"
+    done
 
     local dups
     dups=$(grep -oE '^(var|fun|class) [A-Za-z_][A-Za-z0-9_]*' "$lox" | awk '{print $2}' | sort | uniq -d)
@@ -75,7 +101,7 @@ where() {
 }
 
 # Manifests built when run without arguments, with their output names.
-ALL="MANIFEST.interpreter:build/loxi MANIFEST.compiler:build/loxc"
+ALL="MANIFEST.interpreter:build/loxi MANIFEST.compiler:build/loxc MANIFEST.astprinter:build/loxast"
 
 case "${1:-}" in
     "")

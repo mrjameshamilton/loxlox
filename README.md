@@ -22,11 +22,17 @@ These are implemented in a [patch for the original jlox interpreter](https://git
 
 ## Sources
 
-`Lox.lox` is generated: edit the files in `src/` and run `./bundle.sh` to
-regenerate it. The files making up each bundle are listed, in order, in a
-`MANIFEST.*` file (`MANIFEST.interpreter` builds `build/loxi.lox`, which is
-copied to `Lox.lox`). Each bundle also gets a `.map` file, so a line number
-in an error can be traced back to its source:
+`Lox.lox` is generated (and not checked in): edit the files in `src/` and run
+`./bundle.sh` to regenerate it; `build.sh` and `test.sh` do this automatically.
+The files making up each bundle are listed, in order, in a `MANIFEST.*` file,
+which can `include` another manifest (shared sources are in `MANIFEST.core`):
+
+* `MANIFEST.interpreter` builds `build/loxi.lox`, which is copied to `Lox.lox`.
+* `MANIFEST.astprinter` builds `build/loxast.lox`, a debug tool which prints a
+  script's AST instead of running it: `bin/loxast hello.lox`.
+
+Each bundle also gets a `.map` file, so a line number in an error can be traced
+back to its source:
 
 ```shell
 $ ./bundle.sh where build/loxi.map 1234

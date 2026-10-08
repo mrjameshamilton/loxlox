@@ -1,0 +1,6 @@
+# Debug tool printing the AST of a script, after resolving and optimizing,
+# instead of running it (build/loxast.lox, run with bin/loxast).
+
+include MANIFEST.core
+src/debug/AstPrinter.lox
+src/debug/main.lox

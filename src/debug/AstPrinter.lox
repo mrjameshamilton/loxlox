@@ -38,7 +38,7 @@ class AstPrinter {
 
         for (var i = 0; i < functionStmt.params.length; i = i + 1) {
             if (i != 0) str = str + " ";
-            str = str + functionStmt.params.get(0).lexeme;
+            str = str + functionStmt.params.get(i).lexeme;
         }
 
         str = str + ") ";
@@ -61,7 +61,7 @@ class AstPrinter {
     }
 
     visitReturnStmt(returnStmt) {
-        if (returnStmt.value != nil) return "(return)";
+        if (returnStmt.value == nil) return "(return)";
         return this.parenthesize("return", returnStmt.value);
     }
 
@@ -89,7 +89,6 @@ class AstPrinter {
         var str = "(call " + callExpr.callee.accept(this);
 
         for (var i = 0; i < callExpr.arguments.length; i = i + 1) {
-            if (i != 0) str = str + " ";
             str = str + " " + callExpr.arguments.get(i).accept(this);
         }
         return str + ")";
@@ -108,7 +107,7 @@ class AstPrinter {
         var value = literalExpr.value;
         if (literalExpr.value.is(Number)) return number2string(value.value);
         if (literalExpr.value.is(String)) return value.value;
-        if (value) return "true"; else return "false";
+        if (value.value) return "true"; else return "false";
     }
 
     visitLogicalExpr(logicalExpr) {
@@ -120,7 +119,7 @@ class AstPrinter {
     }
 
     visitSuperExpr(superExpr) {
-        return this.parenthesize0("super " + superExpr.method);
+        return this.parenthesize0("super " + superExpr.method.lexeme);
     }
 
     visitThisExpr(thisExpr) {
@@ -151,5 +150,3 @@ class AstPrinter {
         return "(" + name + " " + expr.accept(this) + " " + expr2.accept(this) + " " + expr3.accept(this) + ")";
     }
 }
-
-//print AstPrinter().execute(statements);
